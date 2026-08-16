@@ -121,6 +121,45 @@ describe("POST /webhook", () => {
     expect(pushed).toHaveLength(0);
   });
 
+  it("ignore les réactions emoji : rien en base, rien en file, fenêtre 24 h intacte", async () => {
+    const reactionPayload = JSON.stringify({
+      object: "whatsapp_business_account",
+      entry: [
+        {
+          changes: [
+            {
+              field: "messages",
+              value: {
+                messages: [
+                  {
+                    id: "wamid.reaction-1",
+                    from: "33612345678",
+                    timestamp: "1700000000",
+                    type: "reaction",
+                    reaction: { message_id: "wamid.test-1", emoji: "👍" },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+    });
+    const response = await app.inject({
+      method: "POST",
+      url: "/webhook",
+      payload: reactionPayload,
+      headers: {
+        "content-type": "application/json",
+        "x-hub-signature-256": sign(reactionPayload),
+      },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(pushed).toHaveLength(0);
+    expect(db.getHistory("33612345678")).toHaveLength(0);
+    expect(db.lastInboundTs("33612345678")).toBeNull();
+  });
+
   it("déduplique un message déjà reçu (retry Meta)", async () => {
     const headers = {
       "content-type": "application/json",

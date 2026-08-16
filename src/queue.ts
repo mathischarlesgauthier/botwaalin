@@ -52,14 +52,13 @@ export class DebounceQueue {
     this.pending.delete(waId);
 
     const previous = this.processing.get(waId) ?? Promise.resolve();
-    const run = previous
+    const entry: Promise<void> = previous
       .then(() => this.handler(waId, batch.items))
-      .catch((err) => this.onError?.(err, waId));
-    this.processing.set(
-      waId,
-      run.then(() => {
-        if (this.processing.get(waId) === run) this.processing.delete(waId);
-      }),
-    );
+      .catch((err) => this.onError?.(err, waId))
+      .then(() => {
+        // Ne se retire de la map que si aucun batch suivant ne s'est enchaîné.
+        if (this.processing.get(waId) === entry) this.processing.delete(waId);
+      });
+    this.processing.set(waId, entry);
   }
 }

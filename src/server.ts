@@ -75,6 +75,10 @@ export function extractText(message: WebhookMessage): string {
     }
     case "button":
       return message.button?.text ?? "";
+    case "reaction":
+    case "system":
+      // Ni un tour de conversation, ni une réouverture de la fenêtre 24 h côté Meta.
+      return "";
     default:
       return `[Le client a envoyé un message de type "${message.type}" que tu ne peux pas lire — demande-lui poliment de préciser par écrit]`;
   }
@@ -165,7 +169,13 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
             continue;
           }
           const text = extractText(message);
-          if (!text) continue;
+          if (!text) {
+            logDecision(log, "inbound_ignored", {
+              waId: message.from,
+              type: message.type,
+            });
+            continue;
+          }
 
           const ts = message.timestamp
             ? Number(message.timestamp) * 1000

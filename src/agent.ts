@@ -53,20 +53,27 @@ ${catalogue}
 </catalogue>`;
 }
 
-/** Convertit l'historique SQLite en messages Anthropic (rôles consécutifs fusionnés). */
+/**
+ * Convertit l'historique SQLite en messages Anthropic : rôles consécutifs
+ * fusionnés, premier tour forcé "user", et tout tour assistant FINAL tronqué —
+ * l'API (famille 4.6+) rejette une conversation se terminant par un tour
+ * assistant (prefill supprimé).
+ */
 export function toAnthropicMessages(
   history: StoredMessage[],
 ): Anthropic.Messages.MessageParam[] {
   const messages: Anthropic.Messages.MessageParam[] = [];
   for (const row of history) {
-    // L'API exige que la conversation commence par un tour "user".
     if (messages.length === 0 && row.role !== "user") continue;
-    const last = messages[messages.length - 1];
+    const last = messages.at(-1);
     if (last && last.role === row.role && typeof last.content === "string") {
       last.content = `${last.content}\n${row.contenu}`;
     } else {
       messages.push({ role: row.role, content: row.contenu });
     }
+  }
+  while (messages.at(-1)?.role === "assistant") {
+    messages.pop();
   }
   return messages;
 }
@@ -98,22 +105,44 @@ export class SalesAgent {
 
   /**
    * Garde-fou déterministe : bloque toute réponse citant un prix absent
-   * du catalogue et la remplace par un renvoi vers Jacob.
+   * du catalogue et la remplace par un renvoi vers Jacob (+ handoff tracé).
    */
   guardReply(waId: string, reply: string): string {
     const foreign = findForeignPrices(reply, this.allowedPrices);
     if (foreign.length === 0) return reply;
     logDecision(this.deps.log, "price_guard_blocked", { waId, foreign });
-    this.deps.db.insertHandoff(waId, "prix_hors_catalogue");
-    return PRICE_FALLBACK;
+    return this.safetyFallback(waId, "prix_hors_catalogue");
   }
 
-  /** Génère la réponse de l'agent pour un contact (boucle tool-use complète). */
+  /**
+   * Génère la réponse de l'agent. Si un nouveau message client arrive pendant
+   * la génération (détecté via le curseur du dernier message user), on
+   * régénère une fois pour que la réponse couvre toute la conversation.
+   */
   async respond(waId: string): Promise<string | null> {
+    for (let pass = 0; pass < 2; pass++) {
+      const cursor = this.deps.db.lastUserMessageId(waId);
+      const reply = await this.generate(waId);
+      if (reply === null) return null;
+      if (pass === 0 && this.deps.db.lastUserMessageId(waId) !== cursor) {
+        logDecision(this.deps.log, "regenerate_after_new_message", { waId });
+        continue;
+      }
+      return reply;
+    }
+    return null;
+  }
+
+  private async generate(waId: string): Promise<string | null> {
     const { client, model, db, log } = this.deps;
     const history = db.getHistory(waId, 20);
     const messages = toAnthropicMessages(history);
-    if (messages.length === 0) return null;
+    const last = messages.at(-1);
+    if (!last || last.role !== "user") {
+      // Rien de nouveau à traiter (batch déjà couvert par une réponse précédente).
+      logDecision(log, "history_without_pending_user_turn", { waId });
+      return null;
+    }
 
     const toolCtx: ToolContext = {
       waId,
@@ -124,11 +153,12 @@ export class SalesAgent {
       log,
     };
 
+    let budget = this.maxTokens;
     let toolsUsed = false;
     for (let iteration = 0; iteration < this.maxIterations; iteration++) {
       const response = await client.messages.create({
         model,
-        max_tokens: this.maxTokens,
+        max_tokens: budget,
         system: [
           {
             type: "text",
@@ -140,6 +170,21 @@ export class SalesAgent {
         messages,
       });
 
+      if (response.stop_reason === "refusal") {
+        logDecision(log, "agent_refusal", { waId, iterations: iteration + 1 });
+        return this.safetyFallback(waId, "refus_classifieur");
+      }
+
+      if (response.stop_reason === "max_tokens") {
+        if (budget === this.maxTokens) {
+          budget = this.maxTokens * 4;
+          logDecision(log, "agent_retry_larger_budget", { waId, budget });
+          continue;
+        }
+        logDecision(log, "agent_truncated", { waId });
+        return this.safetyFallback(waId, "reponse_tronquee");
+      }
+
       if (response.stop_reason === "tool_use") {
         toolsUsed = true;
         const toolUses = response.content.filter(
@@ -150,16 +195,19 @@ export class SalesAgent {
         const results: Anthropic.Messages.ToolResultBlockParam[] = [];
         for (const toolUse of toolUses) {
           let output: string;
+          let isError = false;
           try {
             output = await executeTool(toolUse.name, toolUse.input, toolCtx);
           } catch (err) {
             log.error({ waId, tool: toolUse.name, err: String(err) }, "tool_error");
             output = "Erreur interne de l'outil. Utilise handoff_human.";
+            isError = true;
           }
           results.push({
             type: "tool_result",
             tool_use_id: toolUse.id,
             content: output,
+            ...(isError ? { is_error: true } : {}),
           });
         }
         messages.push({ role: "user", content: results });
@@ -184,7 +232,17 @@ export class SalesAgent {
     }
 
     // Trop d'itérations : on ne laisse pas le client sans réponse fiable.
-    logDecision(log, "agent_max_iterations", { waId, toolsUsed });
-    return toolsUsed ? null : PRICE_FALLBACK;
+    logDecision(this.deps.log, "agent_max_iterations", { waId, toolsUsed });
+    return toolsUsed ? null : this.safetyFallback(waId, "max_iterations");
+  }
+
+  /** Trace un handoff, notifie Jacob, et renvoie le message de repli sûr. */
+  private safetyFallback(waId: string, motif: string): string {
+    this.deps.db.insertHandoff(waId, motif);
+    this.deps.db.setStatut(waId, "handoff");
+    void this.deps.telegram.notifyAdmin(
+      `⚠️ Fallback agent WhatsApp\nClient : +${waId}\nMotif : ${motif}`,
+    );
+    return PRICE_FALLBACK;
   }
 }

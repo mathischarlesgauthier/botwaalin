@@ -39,8 +39,30 @@ describe("détection de prix hors catalogue", () => {
     expect(findForeignPrices("Comptez 1 234€ environ", allowed)).toEqual(["1234"]);
   });
 
-  it("ignore les nombres sans € (délais, pourcentages…)", () => {
+  it("détecte les prix écrits en toutes lettres, en EUR ou en k€", () => {
+    expect(findForeignPrices("ça tourne autour de 600 euros", allowed)).toEqual(["600"]);
+    expect(findForeignPrices("Comptez 999 EUR", allowed)).toEqual(["999"]);
+    expect(findForeignPrices("Environ 800 euro", allowed)).toEqual(["800"]);
+    // 1,5k€ = 1500 est un prix du catalogue (Site Premium) : non signalé.
+    expect(findForeignPrices("Compte 1,5k€ pour ça", allowed)).toEqual([]);
+    expect(findForeignPrices("Compte 1,2k€ pour ça", allowed)).toEqual(["1200"]);
+    expect(findForeignPrices("€999 pour toi", allowed)).toEqual(["999"]);
+  });
+
+  it("détecte chaque borne d'une fourchette", () => {
+    expect(findForeignPrices("entre 400 et 750 €", allowed)).toEqual(["400"]);
+    expect(findForeignPrices("de 749-999 €", allowed)).toEqual(["749", "999"]);
+  });
+
+  it("ne colle pas un nombre voisin au prix (faux positif « Formule 1, 545 € »)", () => {
+    expect(findForeignPrices("Formule 1, 545 € pour le New Mexico", allowed)).toEqual([]);
+    expect(findForeignPrices("Ça démarre à 750, 1 500 € pour le Premium", allowed)).toEqual([]);
+  });
+
+  it("ignore les nombres sans € (délais, pourcentages…) et les mots proches", () => {
     expect(findForeignPrices("Livraison en 10 à 15 jours, 38 % du trafic", allowed)).toEqual([]);
+    expect(findForeignPrices("accès aux marchés européens", allowed)).toEqual([]);
+    expect(findForeignPrices("Réponse sous 24 h, 5 à 10 heures d'appels", allowed)).toEqual([]);
   });
 });
 

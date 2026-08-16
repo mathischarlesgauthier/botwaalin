@@ -35,6 +35,8 @@ docker compose up --build
 
 Le webhook écoute sur `http://<hôte>:3000/webhook` (santé : `/health`). En production, place un reverse proxy HTTPS devant (Meta exige une URL HTTPS avec certificat valide).
 
+> ⚠️ Sur un hôte **Linux**, le conteneur tourne en utilisateur `node` (uid 1000) : donne-lui l'écriture sur le volume avant le premier lancement — `sudo chown -R 1000:1000 data/`. (Inutile sur macOS/Windows avec Docker Desktop.)
+
 Développement local :
 
 ```bash

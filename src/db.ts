@@ -86,9 +86,15 @@ export function createDb(path: string) {
       `INSERT INTO messages (wa_id, role, contenu, wamid, ts) VALUES (?, ?, ?, ?, ?)`,
     ),
     hasWamid: db.prepare(`SELECT 1 FROM messages WHERE wamid = ? LIMIT 1`),
+    // Tri par id (ordre réel d'insertion) : les horodatages mélangent l'horloge
+    // Meta (précision seconde) et Date.now() serveur, donc ts n'est pas fiable
+    // pour ordonner la conversation.
     getHistory: db.prepare(
       `SELECT role, contenu, ts FROM messages WHERE wa_id = ?
-       ORDER BY ts DESC, id DESC LIMIT ?`,
+       ORDER BY id DESC LIMIT ?`,
+    ),
+    lastUserMessageId: db.prepare(
+      `SELECT MAX(id) AS id FROM messages WHERE wa_id = ? AND role = 'user'`,
     ),
     lastInboundTs: db.prepare(
       `SELECT MAX(ts) AS ts FROM messages WHERE wa_id = ? AND role = 'user'`,
@@ -137,6 +143,11 @@ export function createDb(path: string) {
     lastInboundTs(waId: string): number | null {
       const row = stmts.lastInboundTs.get(waId) as { ts: number | null } | undefined;
       return row?.ts ?? null;
+    },
+    /** Curseur du dernier message client (détection d'un message arrivé en cours de génération). */
+    lastUserMessageId(waId: string): number | null {
+      const row = stmts.lastUserMessageId.get(waId) as { id: number | null } | undefined;
+      return row?.id ?? null;
     },
     insertLead(waId: string, lead: LeadInput): void {
       stmts.insertLead.run(

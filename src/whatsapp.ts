@@ -108,7 +108,8 @@ export class WhatsAppClient {
       recipient_type: "individual",
       to: waId,
       type: "text",
-      text: { preview_url: false, body: text },
+      // Limite WhatsApp : 4096 caractères par corps de message.
+      text: { preview_url: false, body: text.slice(0, 4096) },
     });
   }
 
