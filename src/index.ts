@@ -31,7 +31,10 @@ async function main(): Promise<void> {
     { botToken: config.TELEGRAM_BOT_TOKEN, chatId: config.ADMIN_TG_CHAT_ID },
     log,
   );
-  const anthropic = new Anthropic({ apiKey: config.ANTHROPIC_API_KEY });
+  const anthropic = new Anthropic({
+    apiKey: config.ANTHROPIC_API_KEY,
+    ...(config.ANTHROPIC_BASE_URL ? { baseURL: config.ANTHROPIC_BASE_URL } : {}),
+  });
   const agent = new SalesAgent({
     client: anthropic,
     model: config.ANTHROPIC_MODEL,

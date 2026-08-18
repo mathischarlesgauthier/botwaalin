@@ -6,6 +6,8 @@ const envSchema = z.object({
   VERIFY_TOKEN: z.string().min(1, "VERIFY_TOKEN requis"),
   APP_SECRET: z.string().min(1, "APP_SECRET requis"),
   ANTHROPIC_API_KEY: z.string().min(1, "ANTHROPIC_API_KEY requis"),
+  /** Endpoint compatible Anthropic (ex. Kimi/Moonshot : https://api.moonshot.ai/anthropic). Vide = API Anthropic officielle. */
+  ANTHROPIC_BASE_URL: z.string().default(""),
   ADMIN_TG_CHAT_ID: z.string().default(""),
   TELEGRAM_BOT_TOKEN: z.string().default(""),
   PORT: z.coerce.number().int().positive().default(3000),
