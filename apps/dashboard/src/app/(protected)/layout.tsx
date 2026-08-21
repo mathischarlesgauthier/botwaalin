@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { billingStatus } from "@arbi/core";
 import { logoutAction } from "@/lib/actions";
 import { requireSession } from "@/lib/auth";
 import { getRuntime } from "@/lib/core";
@@ -11,6 +12,7 @@ const NAV = [
   { href: "/leads", label: "Demandes / Leads", icon: "🎯" },
   { href: "/questions", label: "Questions", icon: "❓" },
   { href: "/catalogue", label: "Catalogue & tarifs", icon: "🗂️" },
+  { href: "/facturation", label: "Abonnement", icon: "💳" },
   { href: "/reglages", label: "Réglages", icon: "⚙️" },
 ];
 
@@ -19,6 +21,8 @@ export default async function ProtectedLayout({ children }: { children: React.Re
   const { core } = getRuntime();
   const openAlerts = core.alerts.countOpen();
   const botActif = core.settings.get("bot_actif");
+  const billing = billingStatus(core);
+  const billingWarn = !billing.active || billing.balanceCents <= 0;
 
   return (
     <div className="flex min-h-screen flex-col md:flex-row">
@@ -43,6 +47,11 @@ export default async function ProtectedLayout({ children }: { children: React.Re
               {item.href === "/conversations" && openAlerts > 0 && (
                 <span className="ml-auto rounded-full bg-red-600 px-2 py-0.5 text-xs font-bold">
                   {openAlerts}
+                </span>
+              )}
+              {item.href === "/facturation" && billingWarn && (
+                <span className="ml-auto rounded-full bg-amber-500 px-2 py-0.5 text-xs font-bold text-black">
+                  !
                 </span>
               )}
             </Link>

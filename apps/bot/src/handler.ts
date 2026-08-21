@@ -1,4 +1,5 @@
 import {
+  billingStatus,
   logDecision,
   normalizeText,
   triggerAlert,
@@ -44,6 +45,8 @@ export interface HandlerDeps {
   agent: SalesAgent;
   alertDeps: AlertDeps;
   log: Logger;
+  /** Coupure de service si la facturation n'est pas à jour (solde ≤ 0). */
+  billingEnforced?: boolean;
 }
 
 /**
@@ -90,6 +93,15 @@ export function createHandler(deps: HandlerDeps) {
     if (!core.settings.get("bot_actif")) {
       logDecision(log, "bot_disabled", { waId });
       return;
+    }
+
+    // ── Facturation : service suspendu (abonnement impayé ou crédit API épuisé) ──
+    if (deps.billingEnforced) {
+      const billing = billingStatus(core);
+      if (!billing.active) {
+        logDecision(log, "billing_suspended", { waId, reason: billing.reason });
+        return;
+      }
     }
 
     const lastText = items[items.length - 1]?.text ?? "";

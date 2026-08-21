@@ -3,7 +3,9 @@ import {
   createGate,
   createLlmClient,
   createLogger,
+  recordUsage,
   WhatsAppClient,
+  withUsageMetering,
   type AlertDeps,
   type Core,
 } from "@arbi/core";
@@ -54,11 +56,20 @@ export function getRuntime(): Runtime {
   );
 
   const model = process.env.ANTHROPIC_MODEL ?? "kimi-k2.6";
-  const llm = createLlmClient({
-    apiKey: process.env.ANTHROPIC_API_KEY ?? "",
-    baseUrl: process.env.ANTHROPIC_BASE_URL || undefined,
-    model,
-  });
+  // Les appels LLM du dashboard (résumés, alertes) sont facturés comme ceux du bot.
+  const llm = withUsageMetering(
+    createLlmClient({
+      apiKey: process.env.ANTHROPIC_API_KEY ?? "",
+      baseUrl: process.env.ANTHROPIC_BASE_URL || undefined,
+      model,
+    }),
+    {
+      inputCentsPerMTok: Number(process.env.LLM_COST_INPUT_CENTS_PER_MTOK ?? 55),
+      outputCentsPerMTok: Number(process.env.LLM_COST_OUTPUT_CENTS_PER_MTOK ?? 230),
+      markup: Number(process.env.LLM_MARKUP ?? 4),
+    },
+    (usage) => recordUsage(core, usage),
+  );
 
   const alertDeps: AlertDeps = {
     core,

@@ -3,7 +3,14 @@ import {
   createGate,
   createLlmClient,
   createLogger,
+  ensureMonthlyDebits,
+  initBilling,
+  ensureStripePaymentLink,
+  pollStripePayments,
+  pushApiInvoiceItems,
+  recordUsage,
   WhatsAppClient,
+  withUsageMetering,
   type AlertDeps,
 } from "@arbi/core";
 import { SalesAgent } from "./agent";
@@ -40,11 +47,26 @@ async function main(): Promise<void> {
     log,
   );
 
-  const llm = createLlmClient({
-    apiKey: config.ANTHROPIC_API_KEY,
-    baseUrl: config.ANTHROPIC_BASE_URL || undefined,
-    model: config.ANTHROPIC_MODEL,
-  });
+  // Chaque appel LLM est compté et facturé au client (montant = coût interne × marge).
+  const llm = withUsageMetering(
+    createLlmClient({
+      apiKey: config.ANTHROPIC_API_KEY,
+      baseUrl: config.ANTHROPIC_BASE_URL || undefined,
+      model: config.ANTHROPIC_MODEL,
+    }),
+    {
+      inputCentsPerMTok: config.LLM_COST_INPUT_CENTS_PER_MTOK,
+      outputCentsPerMTok: config.LLM_COST_OUTPUT_CENTS_PER_MTOK,
+      markup: config.LLM_MARKUP,
+    },
+    (usage) => recordUsage(core, usage),
+  );
+
+  initBilling(core);
+  ensureMonthlyDebits(core);
+  const billingEnforced =
+    config.BILLING_ENFORCE === "1" ||
+    (config.BILLING_ENFORCE !== "0" && Boolean(config.STRIPE_SECRET_KEY));
 
   const alertDeps: AlertDeps = {
     core,
@@ -65,7 +87,7 @@ async function main(): Promise<void> {
     log,
   });
 
-  const handler = createHandler({ core, wa, agent, alertDeps, log });
+  const handler = createHandler({ core, wa, agent, alertDeps, log, billingEnforced });
   const queue = new DebounceQueue(config.DEBOUNCE_MS, handler, (err, waId) => {
     log.error({ waId, err: String(err) }, "batch_processing_error");
   });
@@ -91,9 +113,41 @@ async function main(): Promise<void> {
     }
   }, 10 * 60 * 1000);
 
+  // Facturation : débit mensuel + encaissements Stripe.
+  const billingTimer = setInterval(() => {
+    try {
+      const inserted = ensureMonthlyDebits(core);
+      if (inserted > 0) log.info({ inserted }, "monthly_debit_posted");
+    } catch (err) {
+      log.error({ err: String(err) }, "monthly_debit_failed");
+    }
+  }, 60 * 60 * 1000);
+  let stripeTimer: NodeJS.Timeout | undefined;
+  if (config.STRIPE_SECRET_KEY) {
+    const key = config.STRIPE_SECRET_KEY;
+    // La création du lien est une étape du poll : un échec Stripe transitoire
+    // au boot est retenté toutes les 15 min au lieu d'être perdu jusqu'au
+    // prochain redémarrage.
+    const poll = async () => {
+      try {
+        if (!core.settings.get("stripe_payment_link_url")) {
+          await ensureStripePaymentLink(core, key, log);
+        }
+        await pollStripePayments(core, key, log);
+        await pushApiInvoiceItems(core, key, log);
+      } catch (err) {
+        log.error({ err: String(err) }, "stripe_poll_failed");
+      }
+    };
+    void poll();
+    stripeTimer = setInterval(() => void poll(), 15 * 60 * 1000);
+  }
+
   const shutdown = async (signal: string) => {
     log.info({ signal }, "Arrêt en cours");
     clearInterval(releaseTimer);
+    clearInterval(billingTimer);
+    if (stripeTimer) clearInterval(stripeTimer);
     await app.close();
     core.close();
     process.exit(0);

@@ -160,6 +160,29 @@ CREATE TABLE IF NOT EXISTS synonyms (
   resolution TEXT NOT NULL,
   actif      INTEGER NOT NULL DEFAULT 1
 );
+
+CREATE TABLE IF NOT EXISTS billing_transactions (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  type          TEXT NOT NULL,
+  montant_cents INTEGER NOT NULL,
+  description   TEXT NOT NULL DEFAULT '',
+  ref           TEXT,
+  periode       TEXT,
+  created_at    INTEGER NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_billing_ref ON billing_transactions (ref) WHERE ref IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_billing_periode ON billing_transactions (type, periode) WHERE periode IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS llm_usage (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  model           TEXT NOT NULL DEFAULT '',
+  input_tokens    INTEGER NOT NULL DEFAULT 0,
+  output_tokens   INTEGER NOT NULL DEFAULT 0,
+  cost_centimes   REAL NOT NULL DEFAULT 0,
+  billed_centimes REAL NOT NULL DEFAULT 0,
+  created_at      INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_llm_usage_date ON llm_usage (created_at);
 `;
 
 function tableColumns(db: BetterSqlite3.Database, table: string): Set<string> {

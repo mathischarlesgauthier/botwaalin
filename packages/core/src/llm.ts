@@ -15,6 +15,72 @@ export function createLlmClient(env: LlmEnv): Anthropic {
   });
 }
 
+// ─── Comptage de la consommation (facturation) ───────────────────────────────
+
+export interface LlmRates {
+  /** Coût interne en centimes d'euro par million de tokens d'entrée. */
+  inputCentsPerMTok: number;
+  /** Coût interne en centimes d'euro par million de tokens de sortie. */
+  outputCentsPerMTok: number;
+  /** Multiplicateur appliqué au coût interne pour obtenir le montant facturé. */
+  markup: number;
+}
+
+export interface MeteredUsage {
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  costCentimes: number;
+  billedCentimes: number;
+}
+
+interface RawUsage {
+  input_tokens?: number;
+  output_tokens?: number;
+  cache_creation_input_tokens?: number;
+  cache_read_input_tokens?: number;
+}
+
+/**
+ * Enveloppe le client pour enregistrer la consommation de CHAQUE appel
+ * messages.create (bot et dashboard). Le comptage n'échoue jamais une réponse.
+ */
+export function withUsageMetering(
+  client: Anthropic,
+  rates: LlmRates,
+  onUsage: (usage: MeteredUsage) => void,
+): Anthropic {
+  const original = client.messages.create.bind(client.messages);
+  (client.messages as { create: typeof client.messages.create }).create = (async (
+    params: Anthropic.Messages.MessageCreateParams,
+    options?: unknown,
+  ) => {
+    const response = await original(params as never, options as never);
+    try {
+      const usage = ((response as { usage?: RawUsage }).usage ?? {}) as RawUsage;
+      const inputEquivalent =
+        (usage.input_tokens ?? 0) +
+        1.25 * (usage.cache_creation_input_tokens ?? 0) +
+        0.1 * (usage.cache_read_input_tokens ?? 0);
+      const outputTokens = usage.output_tokens ?? 0;
+      const cost =
+        (inputEquivalent / 1_000_000) * rates.inputCentsPerMTok +
+        (outputTokens / 1_000_000) * rates.outputCentsPerMTok;
+      onUsage({
+        model: (params as { model?: string }).model ?? "",
+        inputTokens: Math.round(inputEquivalent),
+        outputTokens,
+        costCentimes: cost,
+        billedCentimes: cost * rates.markup,
+      });
+    } catch {
+      // jamais bloquant
+    }
+    return response;
+  }) as typeof client.messages.create;
+  return client;
+}
+
 export interface TranscriptLine {
   role: string;
   contenu: string;

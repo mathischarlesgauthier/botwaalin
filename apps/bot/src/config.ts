@@ -22,6 +22,15 @@ const envSchema = z.object({
   LOG_LEVEL: z.string().default("info"),
   DEBOUNCE_MS: z.coerce.number().int().positive().default(2500),
   GRAPH_API_BASE: z.string().default("https://graph.facebook.com/v21.0"),
+  /** Clé secrète Stripe (lien de paiement + sondage des factures). Vide = pas de Stripe. */
+  STRIPE_SECRET_KEY: z.string().default(""),
+  /** Multiplicateur appliqué à notre coût LLM interne pour obtenir le montant facturé. */
+  LLM_MARKUP: z.coerce.number().positive().default(4),
+  /** Coût interne, en centimes d'euro par million de tokens. */
+  LLM_COST_INPUT_CENTS_PER_MTOK: z.coerce.number().nonnegative().default(55),
+  LLM_COST_OUTPUT_CENTS_PER_MTOK: z.coerce.number().nonnegative().default(230),
+  /** "1" = coupure forcée, "0" = jamais de coupure, "auto" = coupure si Stripe configuré. */
+  BILLING_ENFORCE: z.string().default("auto"),
 });
 
 export type Config = z.infer<typeof envSchema>;

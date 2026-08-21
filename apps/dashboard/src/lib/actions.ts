@@ -1,6 +1,12 @@
 "use server";
 
-import { formatAlertText, summarizeConversation, validateE164, type AdminNumber } from "@arbi/core";
+import {
+  formatAlertText,
+  pollStripePayments,
+  summarizeConversation,
+  validateE164,
+  type AdminNumber,
+} from "@arbi/core";
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
@@ -279,4 +285,28 @@ export async function testAdminNumberAction(number: string): Promise<void> {
     outcome += ` · texte libre : ${textResult.sent ? "envoyé ✅" : `échec (${textResult.reason})`}`;
   }
   redirect("/reglages?msg=" + encodeURIComponent(`Test vers ${number} — ${outcome}`));
+}
+
+// ── Facturation ──
+
+export async function checkStripePaymentsAction(): Promise<void> {
+  await requireSession();
+  const { core, log } = getRuntime();
+  const key = process.env.STRIPE_SECRET_KEY ?? "";
+  if (!key) {
+    redirect("/facturation?msg=" + encodeURIComponent("⚠️ Stripe n'est pas configuré."));
+  }
+  let message: string;
+  try {
+    const credited = await pollStripePayments(core, key, log);
+    message =
+      credited > 0
+        ? `✅ ${credited} paiement${credited > 1 ? "s" : ""} trouvé${credited > 1 ? "s" : ""} et crédité${credited > 1 ? "s" : ""}.`
+        : "Aucun nouveau paiement trouvé. Un paiement peut mettre quelques minutes à apparaître.";
+  } catch (err) {
+    message = "⚠️ Vérification impossible pour le moment. Réessaie dans quelques minutes.";
+    log.error({ err: String(err) }, "stripe_poll_action_failed");
+  }
+  revalidatePath("/facturation");
+  redirect("/facturation?msg=" + encodeURIComponent(message));
 }

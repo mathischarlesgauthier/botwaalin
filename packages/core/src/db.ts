@@ -43,6 +43,10 @@ export const SETTINGS_DEFAULTS = {
   objections: OBJECTIONS_SEED,
   alert_template_name: "alerte_admin",
   alert_email_to: "",
+  stripe_payment_link_url: "",
+  stripe_price_id: "",
+  stripe_customer_id: "",
+  stripe_subscription_id: "",
 } as const;
 
 export type SettingsKey = keyof typeof SETTINGS_DEFAULTS;
