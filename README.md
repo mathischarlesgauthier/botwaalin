@@ -1,110 +1,97 @@
-# Agent commercial WhatsApp — ARBI JACOB (GHOST STUDIO)
+# ARBI JACOB v2 — Agent commercial WhatsApp + Back-office
 
-Agent commercial IA sur WhatsApp Business (+33 7 78 70 37 01) : accueil, qualification, présentation des offres du catalogue, closing avec enregistrement du lead et handoff humain vers **@Jacob13013** (Telegram). Propulsé par Claude (`claude-sonnet-4-6`) via une boucle tool-use.
+Agent commercial IA sur WhatsApp Business (marque ARBI JACOB, pôle digital GHOST STUDIO) : personnalité calibrée, mémoire de conversation, routeur à 4 niveaux, moteur tarifaire centralisé, système d'alerte WhatsApp, et **dashboard web** (conversations, résumés, leads, questions, catalogue éditable, réglages). LLM : Claude ou tout endpoint compatible Anthropic (config actuelle : **Kimi `kimi-k2.6`** via Moonshot).
 
 ## Architecture
 
 ```
-Meta Cloud API ──POST /webhook──▶ Fastify ──▶ DebounceQueue (2,5 s / contact)
-   (signature HMAC vérifiée)                        │
-                                                    ▼
-                                              Handler (STOP/START, opt-out)
-                                                    │
-                                                    ▼
-                                    SalesAgent (Claude + tools + garde-fou prix)
-                                     │ get_offer · save_lead · handoff_human · send_menu
-                                     ▼
-                        WhatsAppClient (fenêtre 24 h, rate limit, retry 429/5xx)
-                                     │                    │
-                                     ▼                    ▼
-                                  Client WhatsApp    Admin Telegram (handoff)
+apps/bot         Webhook Meta (HMAC), débounce 2,5 s, routeur 4 niveaux, agent tool-use,
+                 garde-fou prix, anti-répétition de style, alertes, mode humain
+apps/dashboard   Next.js 15 (App Router + Tailwind) : KPI, conversations, leads,
+                 questions, catalogue & tarifs, réglages — auth argon2 + cookie signé
+packages/core    Drizzle + better-sqlite3 (migrations auto v1→v2), moteur tarifaire
+                 (FIXED/FROM/QUOTE/RANGE), intentions (synonymes + Levenshtein),
+                 registre de style, alertes (template → texte → e-mail), client WhatsApp
+data/catalogue.md  Seed du catalogue (ensuite versionné EN BASE, éditable au dashboard)
 ```
 
-- **SQLite** (`better-sqlite3`) : `contacts`, `messages` (avec dédup `wamid`), `leads`, `handoffs`.
-- **Catalogue** : `data/catalogue.md`, injecté intégralement dans le system prompt. Unique source de vérité produit/prix.
-- **Garde-fou prix** : tout prix cité par le modèle est vérifié contre l'index des prix du catalogue ; un prix inconnu remplace la réponse par un renvoi vers Jacob + trace `handoffs`.
-- **Conformité WhatsApp** : fenêtre de service 24 h (hors fenêtre → uniquement `sendTemplate()` avec template approuvé, refus explicite sinon), opt-out STOP définitif avec confirmation unique, réactivation START.
-- **Logs** : toutes les décisions en JSON structuré (pino) — `inbound_queued`, `opt_out`, `send_blocked`, `tool_call`, `handoff`, `price_guard_blocked`, `message_sent`, `send_retry`…
+Le bot et le dashboard partagent la même base SQLite (WAL) via le volume `./data`. **La base fait autorité** sur le catalogue, les tarifs, les réglages et le numéro admin : toute modification au dashboard prend effet immédiatement, sans redéploiement.
 
 ## Démarrage
 
 ```bash
-cp .env.example .env   # remplir les variables (voir procédure Meta ci-dessous)
-docker compose up --build
+cp .env.example .env    # remplir (voir procédure Meta ci-dessous)
+docker compose up --build -d
+# Bot        → http://localhost:3000  (webhook /webhook, santé /health)
+# Dashboard  → http://localhost:3001
 ```
 
-Le webhook écoute sur `http://<hôte>:3000/webhook` (santé : `/health`). En production, place un reverse proxy HTTPS devant (Meta exige une URL HTTPS avec certificat valide).
-
-> ⚠️ Sur un hôte **Linux**, le conteneur tourne en utilisateur `node` (uid 1000) : donne-lui l'écriture sur le volume avant le premier lancement — `sudo chown -R 1000:1000 data/`. (Inutile sur macOS/Windows avec Docker Desktop.)
-
-Développement local :
+Exposer le webhook en HTTPS et le brancher chez Meta automatiquement :
 
 ```bash
-npm install
-npm run dev        # tsx watch
-npm test           # Vitest : signature, débounce, opt-out, prix hors catalogue
-npm run build && npm start
+./scripts/expose.sh     # tunnel cloudflared + mise à jour du webhook Meta par API
 ```
 
-Pour exposer le port 3000 en local pendant les tests Meta : `ngrok http 3000` (ou Cloudflare Tunnel).
+Développement local : `npm install`, `npm test` (60+ tests), `npm run dev:bot`, `npm run dev:dashboard`.
 
-## Procédure Meta Business (obligatoire)
+## Première connexion au dashboard
 
-### 1. Vérification de l'entreprise
-1. [business.facebook.com](https://business.facebook.com) → **Paramètres de l'entreprise → Centre de sécurité → Vérification de l'entreprise**.
-2. Fournir raison sociale, adresse, document officiel (Kbis…). Compter 1 à 5 jours. Sans vérification : limite de 250 conversations/jour et pas de nom d'affichage validé.
+1. Renseigne `DASHBOARD_USER`, `DASHBOARD_PASSWORD` et `DASHBOARD_SESSION_SECRET` dans `.env`.
+2. Ouvre `http://localhost:3001` → connexion. Au premier login réussi, le mot de passe est stocké **hashé (argon2)** en base ; l'env n'est plus consulté ensuite.
+3. Va dans **Réglages** : vérifie le numéro WhatsApp d'alerte (bouton « Envoyer un message de test »), le contact Telegram, le lien du groupe privé.
 
-### 2. Créer l'app et ajouter le numéro
-1. [developers.facebook.com](https://developers.facebook.com) → **Créer une app** → type **Business** → lier au Business Manager vérifié.
-2. Ajouter le produit **WhatsApp** à l'app.
-3. **WhatsApp → Configuration de l'API** → **Ajouter un numéro de téléphone** : +33 7 78 70 37 01, validation par SMS/appel. ⚠️ Le numéro ne doit pas être actif sur l'app WhatsApp/WhatsApp Business classique (sinon le supprimer du compte d'abord).
-4. Noter le **Phone number ID** (≠ numéro) → `PHONE_NUMBER_ID`.
-5. **Jeton permanent** : Business Manager → **Utilisateurs système** → créer un utilisateur système admin → **Générer un token** avec les permissions `whatsapp_business_messaging` + `whatsapp_business_management`, sans expiration → `WHATSAPP_TOKEN`. (Le token affiché dans « Configuration de l'API » expire en 24 h — dev uniquement.)
-6. **App Secret** : Paramètres de l'app → Général → `APP_SECRET`.
+## Logique du bot (résumé)
 
-### 3. Configurer le webhook
-1. **WhatsApp → Configuration → Webhook** : URL = `https://ton-domaine/webhook`, verify token = la valeur que tu mets dans `VERIFY_TOKEN` (chaîne libre choisie par toi).
-2. Lancer le serveur **avant** de valider (Meta appelle `GET /webhook` avec `hub.challenge`).
-3. S'abonner au champ **messages**.
+- **Niveau 1** : l'info est dans la base → réponse directe.
+- **Niveau 2** : service connu, besoin flou → une question de qualification (3 max : objectif, budget, délai).
+- **Niveau 3** : demande personnalisée → prix de départ « dès » + explication devis.
+- **Niveau 4** : message standard + boutons **⚡ Réponse rapide** (contact Telegram) / **🔔 Laisser une alerte**.
+- **Alertes immédiates** : réclamation, litige, paiement, client agressif, 3 échanges sans progression, prix hors grille (garde-fou déterministe).
+- **Mode humain** : dès que Jacob répond depuis le dashboard (ou clique « Reprendre »), le bot se tait ; réactivation manuelle ou automatique après N heures (réglable).
+- Le bot **n'encaisse jamais** (aucun lien de paiement) et n'invente ni prix, ni délai, ni promesse de résultat.
 
-### 4. Templates de messages (hors fenêtre 24 h)
-1. **WhatsApp Manager → Outils de compte → Modèles de message** → créer les templates (ex. `relance_lead`, catégorie *Marketing* ou *Utility*), en français.
-2. Attendre l'approbation Meta (minutes à 24 h).
-3. Côté code : `sendTemplate(waId, "relance_lead", "fr", components)` — c'est le **seul** envoi autorisé hors fenêtre de service ; tout envoi libre hors fenêtre est refusé et loggé (`send_blocked` / `outside_24h_window`).
+## Système d'alerte
 
-### 5. Notification admin Telegram (handoff)
-1. Créer un bot via **@BotFather** → `TELEGRAM_BOT_TOKEN`.
-2. L'admin envoie `/start` au bot, puis récupère son chat id via **@userinfobot** → `ADMIN_TG_CHAT_ID`.
-3. Chaque `handoff_human` envoie au client le contact **@Jacob13013** et notifie ce chat.
+1. Enregistrement en base (motif, catégorie, intention, dernier message) + **résumé automatique** par le LLM.
+2. Notification WhatsApp vers **tous les numéros admin actifs** (Réglages) :
+   - via le **template approuvé `alerte_admin`** (seul canal fiable hors fenêtre 24 h) ;
+   - repli **texte libre** (fonctionne si l'admin a écrit au bot dans les 24 h — envoie « START » au bot depuis le numéro admin pour ouvrir la fenêtre) ;
+   - repli **e-mail** (si `RESEND_API_KEY` + e-mail configurés).
+3. La conversation passe en statut « alerte » (badge rouge au dashboard) jusqu'à « Marquer traitée ».
 
-## Variables d'environnement
-
-| Variable | Rôle |
-|---|---|
-| `WHATSAPP_TOKEN` | Jeton Graph API (permanent conseillé) |
-| `PHONE_NUMBER_ID` | ID du numéro WhatsApp Business |
-| `VERIFY_TOKEN` | Jeton de vérification du webhook (choisi par toi) |
-| `APP_SECRET` | App Secret Meta — vérification `X-Hub-Signature-256` |
-| `ANTHROPIC_API_KEY` | Clé API Anthropic |
-| `ADMIN_TG_CHAT_ID` | Chat Telegram de l'admin notifié au handoff |
-| `TELEGRAM_BOT_TOKEN` | Bot Telegram utilisé pour la notification |
-| `PORT` / `DB_PATH` / `CATALOGUE_PATH` / `LOG_LEVEL` / `DEBOUNCE_MS` / `GRAPH_API_BASE` / `ANTHROPIC_MODEL` | Optionnels (défauts sains) |
-
-## Règles métier codées en dur
-
-- Prix uniquement issus de `data/catalogue.md`, toujours « à partir de » ; prix inconnu → réponse remplacée + handoff (`prix_hors_catalogue`).
-- Aucune promesse de revenu/résultat sur les formations ; aucun conseil fiscal/juridique/comptable personnalisé (Créa Société → professionnel + handoff).
-- L'agent ne prend jamais de paiement et n'envoie aucun lien de paiement.
-- Handoff systématique : devis, paiement, négociation, litige, réclamation, client agressif, incertitude, 3 messages sans progression.
-- Réponses courtes (3-6 lignes), une question à la fois, tutoiement.
-
-## Tests
+### Créer le template `alerte_admin`
 
 ```bash
-npm test
+./scripts/create-template.sh   # soumet le template au WABA (approbation Meta : minutes → 24 h)
 ```
 
-- `signature.test.ts` — HMAC `X-Hub-Signature-256` (valide / secret erroné / absent), challenge `GET /webhook`, dédup des retries Meta.
-- `queue.test.ts` — débounce 2,5 s : 3 messages → 1 seul traitement, isolation par contact, sérialisation des batchs.
-- `optout.test.ts` — STOP → `opt_out=1` + confirmation unique, plus aucun envoi, réactivation START, gate fenêtre 24 h (message libre refusé hors fenêtre, template autorisé).
-- `prices.test.ts` — index des prix du catalogue, détection de prix inventés, garde-fou `guardReply` (remplacement + handoff), sections `get_offer`, contenu du system prompt.
+Si Meta rejette le template, reformule-le dans WhatsApp Manager → Modèles de message (catégorie *Utility*) en gardant les 6 variables `{{1}}…{{6}}` et le bouton URL ; le nom est configurable en base (`alert_template_name`).
+
+## Procédure Meta Business
+
+1. **Vérification de l'entreprise** : business.facebook.com → Centre de sécurité → Vérification (Kbis, 1-5 j). Sans elle : 250 conversations/jour max.
+2. **App + numéro** : developers.facebook.com → app Business → produit WhatsApp → ajouter le numéro (⚠️ le numéro ne doit pas être actif dans l'app WhatsApp d'un téléphone). Récupérer `PHONE_NUMBER_ID` et `WABA_ID`.
+3. **Jeton permanent** : Business Manager → Utilisateurs système → admin → Générer un token (`whatsapp_business_messaging` + `whatsapp_business_management`, expiration jamais) → `WHATSAPP_TOKEN`.
+4. **Webhook** : `./scripts/expose.sh` le configure par API (ou manuellement : URL HTTPS `/webhook`, `VERIFY_TOKEN`, champ **messages** abonné). `APP_SECRET` = Paramètres de l'app → Général.
+5. **Enregistrement du numéro** : si la console échoue (« Échec de l'enregistrement »), `./scripts/connect-meta.sh` fait vérification SMS + register par API.
+6. **Moyen de paiement** : à ajouter dans Business Manager pour l'envoi de messages.
+
+## Déploiement du dashboard
+
+- **Docker (inclus)** : service `dashboard` du compose, port 3001. Mets un reverse proxy HTTPS devant et reporte l'URL publique dans Réglages → « URL publique du dashboard ».
+- **Vercel (alternatif)** : le dashboard exige un accès disque à la SQLite partagée — sur Vercel il faut migrer `packages/core` vers Postgres (Drizzle rend le changement de driver contenu). Le déploiement recommandé reste Docker sur le même hôte que le bot.
+- Sur un hôte **Linux** : `sudo chown -R 1000:1000 data/` avant le premier lancement.
+
+## Tests (`npm test`)
+
+- **Mémoire contextuelle** : l'enchaînement exact « Je cherche un agent. » → « Des casquettes. » → « Et les prix ? » reste sur China Accès.
+- **Prix hors catalogue** : montants de la grille (dont anciens prix v1 retirés) — le garde-fou bloque tout le reste.
+- **Anti-répétition** : jamais deux fois la même expression familière, espacement de 4 réponses minimum.
+- **Alertes** : création, résumé, cascade template → texte → aucune, déduplication, déclencheurs (réclamation, 3 sans progression).
+- **Mode humain** : bot totalement silencieux, réactivation auto après délai.
+- **Numéro admin** : seed env → base autorité, historique des modifications, validation E.164.
+- Plus : signature HMAC du webhook, débounce, opt-out STOP/START, fenêtre 24 h, dédup wamid, boutons interactifs.
+
+## Sécurité
+
+`X-Hub-Signature-256` vérifiée sur le body brut (401 sinon) · secrets hors repo (`.env` gitignoré) · rate limit login (5/15 min) + argon2 + cookie httpOnly signé · rate limit sortant WhatsApp + retry 429/5xx · opt-out STOP définitif · fenêtre de service 24 h (hors fenêtre : templates uniquement) · logs JSON structurés de chaque décision.

@@ -1,20 +1,24 @@
 // Test de bout en bout du cerveau de l'agent contre l'endpoint LLM configuré
-// dans .env (sans WhatsApp) : system prompt réel + tools réels + question client.
-import Anthropic from "@anthropic-ai/sdk";
-import { buildSystemPrompt } from "../src/agent";
-import { loadCatalogue } from "../src/catalogue";
-import { toolDefinitions } from "../src/tools";
+// dans .env (sans WhatsApp) : prompt réel + grille tarifaire réelle + question client.
+import { createCore, createLlmClient } from "@arbi/core";
+import { join } from "node:path";
+import { buildStaticPrompt } from "../apps/bot/src/prompt";
+import { toolDefinitions } from "../apps/bot/src/tools";
 
 async function main() {
-  const baseURL = process.env.ANTHROPIC_BASE_URL || undefined;
-  const model = process.env.ANTHROPIC_MODEL ?? "claude-sonnet-4-6";
-  const client = new Anthropic({
+  const model = process.env.ANTHROPIC_MODEL ?? "kimi-k2.6";
+  const client = createLlmClient({
     apiKey: process.env.ANTHROPIC_API_KEY ?? "",
-    ...(baseURL ? { baseURL } : {}),
+    baseUrl: process.env.ANTHROPIC_BASE_URL || undefined,
+    model,
   });
-  const system = buildSystemPrompt(loadCatalogue("data/catalogue.md"));
+  const core = createCore({
+    dbPath: ":memory:",
+    catalogueSeedPath: join(__dirname, "..", "data", "catalogue.md"),
+  });
+  const system = buildStaticPrompt(core.catalogue.current().contenu, core.pricing.active());
 
-  console.log(`Endpoint : ${baseURL ?? "api.anthropic.com"} | modèle : ${model}`);
+  console.log(`Endpoint : ${process.env.ANTHROPIC_BASE_URL || "api.anthropic.com"} | modèle : ${model}`);
 
   const response = await client.messages.create({
     model,
@@ -29,6 +33,7 @@ async function main() {
     if (block.type === "text") console.log("TEXTE:", block.text);
     if (block.type === "tool_use") console.log("TOOL_USE:", block.name, JSON.stringify(block.input));
   }
+  core.close();
 }
 
 main().catch((err) => {

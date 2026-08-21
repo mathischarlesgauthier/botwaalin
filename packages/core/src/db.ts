@@ -70,6 +70,7 @@ export interface ConversationStateData {
   lastIntent: string | null;
   sansProgression: number;
   replyCount: number;
+  resume: string;
 }
 
 const EMPTY_STATE: Omit<ConversationStateData, "waId"> = {
@@ -87,6 +88,7 @@ const EMPTY_STATE: Omit<ConversationStateData, "waId"> = {
   lastIntent: null,
   sansProgression: 0,
   replyCount: 0,
+  resume: "",
 };
 
 function parseJson<T>(raw: string | null | undefined, fallback: T): T {
@@ -278,6 +280,7 @@ export function createCore(options: CreateCoreOptions) {
         lastIntent: row.lastIntent,
         sansProgression: row.sansProgression,
         replyCount: row.replyCount,
+        resume: row.resume,
       };
     },
     save(state: ConversationStateData): void {
@@ -297,6 +300,7 @@ export function createCore(options: CreateCoreOptions) {
         lastIntent: state.lastIntent,
         sansProgression: state.sansProgression,
         replyCount: state.replyCount,
+        resume: state.resume,
         updatedAt: now(),
       };
       db.insert(schema.conversationState)

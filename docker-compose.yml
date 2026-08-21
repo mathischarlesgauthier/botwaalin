@@ -1,7 +1,9 @@
 services:
-  agent:
-    build: .
-    container_name: arbi-jacob-wa-agent
+  bot:
+    build:
+      context: .
+      dockerfile: apps/bot/Dockerfile
+    container_name: arbi-jacob-bot
     ports:
       - "3000:3000"
     env_file: .env
@@ -24,3 +26,22 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
+
+  dashboard:
+    build:
+      context: .
+      dockerfile: apps/dashboard/Dockerfile
+    container_name: arbi-jacob-dashboard
+    ports:
+      - "3001:3001"
+    env_file: .env
+    environment:
+      PORT: "3001"
+      DB_PATH: /app/data/agent.db
+      CATALOGUE_PATH: /app/data/catalogue.md
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
+    depends_on:
+      bot:
+        condition: service_healthy

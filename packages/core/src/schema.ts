@@ -77,6 +77,8 @@ export const conversationState = sqliteTable("conversation_state", {
   sansProgression: integer("sans_progression").notNull().default(0),
   /** Compteur de réponses du bot dans la conversation (pour l'anti-répétition) */
   replyCount: integer("reply_count").notNull().default(0),
+  /** Résumé automatique de la conversation (régénérable depuis le dashboard) */
+  resume: text("resume").notNull().default(""),
   updatedAt: integer("updated_at").notNull(),
 });
 

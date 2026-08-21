@@ -1,0 +1,50 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: light;
+}
+
+body {
+  @apply bg-neutral-50 text-neutral-900 antialiased;
+}
+
+.badge {
+  @apply inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium;
+}
+.badge-bot {
+  @apply bg-emerald-100 text-emerald-800;
+}
+.badge-alerte {
+  @apply bg-red-100 text-red-700;
+}
+.badge-humain {
+  @apply bg-amber-100 text-amber-800;
+}
+.badge-neutre {
+  @apply bg-neutral-200 text-neutral-700;
+}
+
+.card {
+  @apply rounded-xl border border-neutral-200 bg-white p-4 shadow-sm;
+}
+
+.btn {
+  @apply inline-flex items-center justify-center gap-1 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors disabled:opacity-50;
+}
+.btn-primary {
+  @apply bg-neutral-900 text-white hover:bg-neutral-700;
+}
+.btn-secondary {
+  @apply border border-neutral-300 bg-white text-neutral-800 hover:bg-neutral-100;
+}
+.btn-danger {
+  @apply bg-red-600 text-white hover:bg-red-500;
+}
+
+.input {
+  @apply w-full rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-sm focus:border-neutral-500 focus:outline-none;
+}
+
+.label {
+  @apply mb-1 block text-xs font-semibold uppercase tracking-wide text-neutral-500;
+}

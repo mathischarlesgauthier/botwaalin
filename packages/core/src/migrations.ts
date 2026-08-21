@@ -79,6 +79,7 @@ CREATE TABLE IF NOT EXISTS conversation_state (
   last_intent       TEXT,
   sans_progression  INTEGER NOT NULL DEFAULT 0,
   reply_count       INTEGER NOT NULL DEFAULT 0,
+  resume            TEXT NOT NULL DEFAULT '',
   updated_at        INTEGER NOT NULL
 );
 
@@ -176,6 +177,12 @@ function tableSql(db: BetterSqlite3.Database, table: string): string {
 export function migrate(db: BetterSqlite3.Database): void {
   db.pragma("journal_mode = WAL");
   db.exec(CREATE_TABLES);
+
+  // v2.1 : résumé de conversation régénérable (dashboard)
+  const stateCols = tableColumns(db, "conversation_state");
+  if (stateCols.size > 0 && !stateCols.has("resume")) {
+    db.exec(`ALTER TABLE conversation_state ADD COLUMN resume TEXT NOT NULL DEFAULT ''`);
+  }
 
   // v1 → v2 : colonnes ajoutées sur contacts
   const contactCols = tableColumns(db, "contacts");
