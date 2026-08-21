@@ -2,10 +2,10 @@ import pino from "pino";
 
 export type Logger = pino.Logger;
 
-export function createLogger(level = "info"): Logger {
+export function createLogger(level = "info", service = "wa-agent"): Logger {
   return pino({
     level,
-    base: { service: "wa-agent" },
+    base: { service },
     timestamp: pino.stdTimeFunctions.isoTime,
   });
 }

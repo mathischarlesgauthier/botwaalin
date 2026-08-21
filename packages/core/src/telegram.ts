@@ -30,10 +30,7 @@ export function createTelegramNotifier(
         );
         if (!response.ok) {
           const body = await response.text().catch(() => "");
-          log.error(
-            { status: response.status, body: body.slice(0, 300) },
-            "telegram_notify_failed",
-          );
+          log.error({ status: response.status, body: body.slice(0, 300) }, "telegram_notify_failed");
           return false;
         }
         logDecision(log, "admin_notified", { channel: "telegram" });

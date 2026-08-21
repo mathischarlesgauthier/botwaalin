@@ -1,19 +1,20 @@
+import { logDecision, verifySignature, type Core, type Logger } from "@arbi/core";
 import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
 import { z } from "zod";
-import type { Config } from "./config";
-import type { Db } from "./db";
-import type { Logger } from "./logger";
-import { logDecision } from "./logger";
 import type { InboundItem } from "./queue";
-import { verifySignature } from "./whatsapp";
+
+export interface ServerConfig {
+  VERIFY_TOKEN: string;
+  APP_SECRET: string;
+}
 
 export interface InboundQueue {
   push(waId: string, item: InboundItem): void;
 }
 
 export interface ServerDeps {
-  config: Pick<Config, "VERIFY_TOKEN" | "APP_SECRET">;
-  db: Db;
+  config: ServerConfig;
+  core: Core;
   queue: InboundQueue;
   log: Logger;
 }
@@ -65,22 +66,29 @@ const webhookSchema = z.looseObject({
 
 type WebhookMessage = z.infer<typeof webhookMessageSchema>;
 
-export function extractText(message: WebhookMessage): string {
+export function extractInbound(message: WebhookMessage): { text: string; buttonId?: string } {
   switch (message.type) {
     case "text":
-      return message.text?.body ?? "";
+      return { text: message.text?.body ?? "" };
     case "interactive": {
-      const reply = message.interactive?.list_reply ?? message.interactive?.button_reply;
-      return reply ? `[Choix menu] ${reply.title}` : "";
+      const listReply = message.interactive?.list_reply;
+      if (listReply) return { text: `[Choix menu] ${listReply.title}` };
+      const buttonReply = message.interactive?.button_reply;
+      if (buttonReply) {
+        return { text: `[Bouton] ${buttonReply.title}`, buttonId: buttonReply.id };
+      }
+      return { text: "" };
     }
     case "button":
-      return message.button?.text ?? "";
+      return { text: message.button?.text ?? "" };
     case "reaction":
     case "system":
-      // Ni un tour de conversation, ni une réouverture de la fenêtre 24 h côté Meta.
-      return "";
+      // Ni un tour de conversation, ni une réouverture de la fenêtre 24 h.
+      return { text: "" };
     default:
-      return `[Le client a envoyé un message de type "${message.type}" que tu ne peux pas lire — demande-lui poliment de préciser par écrit]`;
+      return {
+        text: `[Le client a envoyé un message de type "${message.type}" que tu ne peux pas lire — demande-lui poliment de préciser par écrit]`,
+      };
   }
 }
 
@@ -91,10 +99,9 @@ declare module "fastify" {
 }
 
 export function buildServer(deps: ServerDeps): FastifyInstance {
-  const { config, db, queue, log } = deps;
+  const { config, core, queue, log } = deps;
   const app = Fastify({ logger: false, bodyLimit: 2 * 1024 * 1024 });
 
-  // Conserve le body brut : indispensable pour la vérification HMAC.
   app.addContentTypeParser(
     "application/json",
     { parseAs: "buffer" },
@@ -114,7 +121,6 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
 
   app.get("/health", async () => ({ status: "ok" }));
 
-  // Vérification du webhook par Meta (hub.challenge).
   app.get("/webhook", async (request, reply) => {
     const query = request.query as Record<string, string | undefined>;
     const mode = query["hub.mode"];
@@ -130,23 +136,16 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
 
   app.post("/webhook", async (request, reply) => {
     const signature = request.headers["x-hub-signature-256"] as string | undefined;
-    if (
-      !request.rawBody ||
-      !verifySignature(config.APP_SECRET, request.rawBody, signature)
-    ) {
-      logDecision(log, "webhook_rejected_signature", {
-        hasSignature: Boolean(signature),
-      });
+    if (!request.rawBody || !verifySignature(config.APP_SECRET, request.rawBody, signature)) {
+      logDecision(log, "webhook_rejected_signature", { hasSignature: Boolean(signature) });
       return reply.code(401).send({ error: "invalid signature" });
     }
 
     const parsed = webhookSchema.safeParse(request.body);
     if (!parsed.success) {
-      // Ack quand même : Meta ne doit pas retenter en boucle un payload inattendu.
       log.warn({ issues: parsed.error.issues.slice(0, 3) }, "webhook_payload_unexpected");
       return reply.code(200).send({ received: true });
     }
-
     if (parsed.data.object !== "whatsapp_business_account") {
       return reply.code(200).send({ received: true });
     }
@@ -164,31 +163,30 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
         );
 
         for (const message of value.messages) {
-          if (db.hasWamid(message.id)) {
+          if (core.messages.hasWamid(message.id)) {
             logDecision(log, "duplicate_message_skipped", { wamid: message.id });
             continue;
           }
-          const text = extractText(message);
-          if (!text) {
-            logDecision(log, "inbound_ignored", {
-              waId: message.from,
-              type: message.type,
-            });
+          const inbound = extractInbound(message);
+          if (!inbound.text) {
+            logDecision(log, "inbound_ignored", { waId: message.from, type: message.type });
             continue;
           }
 
-          const ts = message.timestamp
-            ? Number(message.timestamp) * 1000
-            : Date.now();
+          const ts = message.timestamp ? Number(message.timestamp) * 1000 : Date.now();
           const profileName = profileByWaId.get(message.from);
-
-          db.upsertContact(message.from, profileName ?? null);
-          db.insertMessage(message.from, "user", text, message.id, ts);
-          queue.push(message.from, { text, profileName });
+          core.contacts.upsert(message.from, profileName ?? null);
+          core.messages.insert(message.from, "user", inbound.text, message.id, ts);
+          queue.push(message.from, {
+            text: inbound.text,
+            profileName,
+            ...(inbound.buttonId ? { buttonId: inbound.buttonId } : {}),
+          });
           logDecision(log, "inbound_queued", {
             waId: message.from,
             type: message.type,
             wamid: message.id,
+            buttonId: inbound.buttonId,
           });
         }
       }

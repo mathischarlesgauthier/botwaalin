@@ -1,6 +1,8 @@
 export interface InboundItem {
   text: string;
   profileName?: string;
+  /** Renseigné quand le message est un clic sur un bouton interactif. */
+  buttonId?: string;
 }
 
 export type BatchHandler = (waId: string, items: InboundItem[]) => Promise<void>;
@@ -37,7 +39,6 @@ export class DebounceQueue {
     }
   }
 
-  /** Nombre de contacts avec un batch en attente (introspection/tests). */
   get pendingCount(): number {
     return this.pending.size;
   }
@@ -56,7 +57,6 @@ export class DebounceQueue {
       .then(() => this.handler(waId, batch.items))
       .catch((err) => this.onError?.(err, waId))
       .then(() => {
-        // Ne se retire de la map que si aucun batch suivant ne s'est enchaîné.
         if (this.processing.get(waId) === entry) this.processing.delete(waId);
       });
     this.processing.set(waId, entry);

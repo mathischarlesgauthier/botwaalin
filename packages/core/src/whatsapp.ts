@@ -11,26 +11,21 @@ export function verifySignature(
   signatureHeader: string | undefined,
 ): boolean {
   if (!signatureHeader || !signatureHeader.startsWith("sha256=")) return false;
-  const expectedHex = crypto
-    .createHmac("sha256", appSecret)
-    .update(rawBody)
-    .digest("hex");
+  const expectedHex = crypto.createHmac("sha256", appSecret).update(rawBody).digest("hex");
   const expected = Buffer.from(expectedHex, "hex");
   const given = Buffer.from(signatureHeader.slice("sha256=".length), "hex");
   return expected.length === given.length && crypto.timingSafeEqual(expected, given);
 }
 
 export interface GateDb {
-  getContact(waId: string): { opt_out: number } | undefined;
+  getContact(waId: string): { optOut: number } | undefined;
   lastInboundTs(waId: string): number | null;
 }
 
 export type GateResult = { ok: true } | { ok: false; reason: string };
 
 export interface OutboundGate {
-  /** Message libre : bloqué si opt-out ou hors fenêtre de service 24 h. */
   canSendFreeForm(waId: string): GateResult;
-  /** Template approuvé : bloqué uniquement si opt-out. */
   canSendTemplate(waId: string): GateResult;
 }
 
@@ -38,7 +33,7 @@ export function createGate(db: GateDb, now: () => number = Date.now): OutboundGa
   return {
     canSendFreeForm(waId) {
       const contact = db.getContact(waId);
-      if (contact?.opt_out) return { ok: false, reason: "opt_out" };
+      if (contact?.optOut) return { ok: false, reason: "opt_out" };
       const last = db.lastInboundTs(waId);
       if (last === null || now() - last > SERVICE_WINDOW_MS) {
         return { ok: false, reason: "outside_24h_window" };
@@ -47,7 +42,7 @@ export function createGate(db: GateDb, now: () => number = Date.now): OutboundGa
     },
     canSendTemplate(waId) {
       const contact = db.getContact(waId);
-      if (contact?.opt_out) return { ok: false, reason: "opt_out" };
+      if (contact?.optOut) return { ok: false, reason: "opt_out" };
       return { ok: true };
     },
   };
@@ -67,13 +62,16 @@ export const MENU_ROWS = [
   { id: "vinted_pro", title: "Vinted Pro", description: "Formation Vinted" },
 ] as const;
 
+export interface InteractiveButton {
+  id: string;
+  title: string;
+}
+
 export interface WhatsAppClientOptions {
   apiBase: string;
   token: string;
   phoneNumberId: string;
-  /** Espacement minimal entre deux envois (rate limit sortant). */
   minGapMs?: number;
-  /** Nombre de retries sur 429/5xx (backoff exponentiel). */
   maxRetries?: number;
   fetchFn?: typeof fetch;
 }
@@ -108,8 +106,32 @@ export class WhatsAppClient {
       recipient_type: "individual",
       to: waId,
       type: "text",
-      // Limite WhatsApp : 4096 caractères par corps de message.
       text: { preview_url: false, body: text.slice(0, 4096) },
+    });
+  }
+
+  /** Boutons de réponse interactifs (max 3, titres ≤ 20 caractères). */
+  async sendButtons(waId: string, bodyText: string, buttons: InteractiveButton[]): Promise<SendResult> {
+    const gate = this.gate.canSendFreeForm(waId);
+    if (!gate.ok) {
+      logDecision(this.log, "send_blocked", { waId, kind: "buttons", reason: gate.reason });
+      return { sent: false, reason: gate.reason };
+    }
+    return this.dispatch(waId, "buttons", {
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to: waId,
+      type: "interactive",
+      interactive: {
+        type: "button",
+        body: { text: bodyText.slice(0, 1024) },
+        action: {
+          buttons: buttons.slice(0, 3).map((b) => ({
+            type: "reply",
+            reply: { id: b.id, title: b.title.slice(0, 20) },
+          })),
+        },
+      },
     });
   }
 
@@ -138,8 +160,7 @@ export class WhatsAppClient {
   }
 
   /**
-   * Envoi d'un template approuvé Meta — seul canal autorisé hors fenêtre 24 h.
-   * Refus explicite uniquement si le contact est opt-out.
+   * Template approuvé Meta — seul canal autorisé hors fenêtre de service 24 h.
    */
   async sendTemplate(
     waId: string,
@@ -179,11 +200,7 @@ export class WhatsAppClient {
     return run;
   }
 
-  private async postWithRetry(
-    waId: string,
-    kind: string,
-    payload: unknown,
-  ): Promise<SendResult> {
+  private async postWithRetry(waId: string, kind: string, payload: unknown): Promise<SendResult> {
     const url = `${this.opts.apiBase}/${this.opts.phoneNumberId}/messages`;
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
       let response: Response;

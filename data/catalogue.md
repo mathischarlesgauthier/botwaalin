@@ -1,186 +1,140 @@
-# CATALOGUE — base de connaissances de l'agent commercial
+# CATALOGUE — base de connaissances de l'agent commercial ARBI JACOB
 
-Règle absolue : l'agent ne cite QUE des prix présents ici. Tous les tarifs sont « à partir de ». Tout projet hors grille = devis.
+Règle absolue : l'agent ne cite QUE des prix présents ici ou dans la grille tarifaire. Les prix « dès » sont des prix de départ : le prix final peut être supérieur selon le projet, et ne doit jamais être présenté comme garanti. Tout ce qui n'est pas chiffré ici = ne pas inventer → alerte ou @Jacob13013.
 
-Marque : **ARBI JACOB** — pôle digital opéré par **GHOST STUDIO**. Communauté : **JACOMMUNITY** (Telegram). Contact humain / closing : **@Jacob13013** (Telegram). Promesses transverses : confidentialité 100 % sécurisée · réponse sous 24 h · solutions sur mesure.
+Marque : **ARBI JACOB** — pôle digital opéré par **GHOST STUDIO**. Communauté : **JACOMMUNITY** (Telegram). Closing humain : **@Jacob13013** (Telegram). Groupe privé (plans, visuels, exemples — à partager avec parcimonie) : https://t.me/+P6Vba87ei95lZGJk. Promesses transverses : confidentialité 100 % sécurisée · réponse sous 24 h · solutions sur mesure.
 
 ## 1. GHOST STUDIO — DIGITAL SOLUTIONS
 
-### 1.1 Création, e-commerce & réseaux sociaux
+Tous les prix « dès » sont des prix de départ. Le prix final peut être supérieur selon le projet.
 
-**Sites internet** — Design · UX/UI · Domaine · SSL · SEO · Analytics · Mise en ligne
+### 1.1 Sites internet
 
-| Offre | Prix |
+- **Site vitrine — dès 750 €** : jusqu'à 5 pages, design personnalisé, responsive, SEO de base, domaine, SSL, Analytics, hébergement et mise en ligne.
+- **Site vitrine premium — dès 1 500 €** : direction artistique, UX/UI sur mesure, animations, CMS, intégrations externes, SEO, Analytics, performance.
+
+### 1.2 E-commerce
+
+- **Boutique — dès 750 €** : catalogue, panier/checkout, paiement CB, livraison, codes promo, gestion des commandes, domaine, SSL, Analytics, mise en ligne.
+- **E-commerce avancé — dès 2 500 €** : design personnalisé, multilingue/multi-devise, abonnements, CRM et automatisation, stocks avancés, ERP/API, espace client et dashboard.
+
+### 1.3 Création de marque
+
+- **Brand Starter — dès 750 €** : positionnement, logo et variantes, couleurs et typographies, univers graphique, mini brand book, assets réseaux sociaux.
+- **Brand Launch — dès 1 500 €** : identité complète, site ou e-commerce, domaine et e-mails pro, solution d'encaissement, Analytics et SEO initial, mise en ligne.
+- **Brand Premium — dès 3 000 €** : identité approfondie, brand guidelines, templates réseaux sociaux, supports publicitaires, landing pages et copywriting, CRM, tracking, automatisations.
+
+### 1.4 Graphisme (prix fermes)
+
+- **Logo — 50 €**
+- **Filtre Snapchat/Instagram — 50 €**
+- **Flyer — 70 €**
+
+### 1.5 Applications & logiciels
+
+- **Application web — dès 3 000 €** : SaaS, CRM, ERP léger, dashboard, portail client, B2B, marketplace, logiciel métier, réservation.
+- **MVP SaaS — dès 3 500 €** : architecture, dashboard, UX/UI, application, paiement Stripe, abonnements, e-mails, analytics, mise en ligne.
+- **Logiciel métier sur mesure — dès 5 000 €** : utilisateurs, documents, CRM/commercial, stocks, facturation, reporting, workflows, API, exports Excel/PDF, IA interne.
+- **Marketplace — dès 5 000 €** : vendeurs/acheteurs, messagerie, catalogue, recherche, avis et notes, dashboard admin, paiements, litiges, commissions.
+- **Application mobile — dès 5 000 €** : iOS + Android, UX/UI, backend, comptes utilisateurs, notifications, API, analytics, tests, publication App Store et Google Play.
+- **Application mobile avancée — dès 10 000 €** : paiements, abonnements, géolocalisation, chat, audio/vidéo, IA, marketplace, réservation, notifications, dashboard.
+
+### 1.6 IA, automatisation & bots
+
+- **Automatisation — dès 750 €** : workflows, CRM, e-mails, données, reporting.
+- **Bot Telegram — dès 1 000 €** : commandes, paiements, comptes, notifications, automatisation.
+- **Bot Discord — dès 1 000 €** : rôles, modération, commandes, IA, automatisation.
+- **Intégration IA — dès 1 500 €** : chat IA, génération de contenu, analyse, recherche intelligente.
+- **Bot WhatsApp — dès 1 500 €** : réponses automatiques, support, qualification, CRM, notifications.
+- **Agent IA — dès 2 500 €** : commercial, service client, qualification de leads, recherche et analyse, reporting.
+- **Automatisation avancée — sur devis** : intégration IA, outils et plateformes, API et webhooks, bases de données.
+
+### 1.7 Data, API & business
+
+- **Intégration API — dès 750 €**
+- **Système de paiement — dès 750 €** : paiements, abonnements, checkout, marketplace, Stripe/PayPal.
+- **Migration de données — dès 1 000 €** : transfert, nettoyage, structure, intégrité.
+- **Dashboard — dès 1 500 €** : ventes, marketing, finance, logistique, reporting.
+- **Création d'API — dès 1 500 €** : API REST, documentation, sécurisation, maintenance.
+- **CRM / ERP — dès 1 500 €**
+- **Dashboard multi-sources — dès 2 500 €** : CRM, ERP, Shopify, Stripe, Analytics, API.
+- **Data platform — dès 5 000 €** : centralisation, transformation, exploitation des données.
+
+### 1.8 Jeux & infrastructure
+
+- **Mini-jeu web — dès 2 500 €**
+- **Jeu vidéo sur mesure — dès 7 500 €**
+- **Hébergement & maintenance — dès 50 €/mois**
+- **Infrastructure business — dès 150 €/mois**
+- **Infrastructure critical — sur devis**
+
+### 1.9 Process projet (6 étapes)
+
+Demande → Étude → Devis → Conception & développement → Tests & mise en ligne → Maintenance.
+Les 5 infos à collecter avant devis : idée/besoin · type de projet · fonctionnalités souhaitées · budget si connu · délai souhaité.
+
+### 1.10 Recommandations types
+
+| Le client dit | Le bot propose |
 |---|---|
-| Site vitrine | dès 750 € |
-| Landing page | dès 750 € |
-| Site Premium | dès 1 500 € |
+| « petit site pour présenter mon entreprise » | Site vitrine dès 750 € |
+| « vendre mes produits avec paiement » | E-commerce dès 750 € |
+| « boutique avancée avec CRM, stocks, automatisations » | E-commerce avancé dès 2 500 € |
+| « je lance une marque, logo + identité + site » | Gamme Brand selon le besoin |
+| « automatiser WhatsApp » | Bot WhatsApp dès 1 500 € |
+| « une IA qui répond et qualifie les prospects » | Agent IA dès 2 500 € |
 
-**E-commerce** — Shopify · Paiement · Livraison · Catalogue · CRM · Stocks · API · Automatisation
+Cross-sell cohérents (UN seul rebond par conversation) : site vitrine → hébergement & maintenance · Brand Starter → site · e-commerce → automatisation / CRM · formation China Accès → agents.
 
-| Offre | Prix |
-|---|---|
-| Boutique | dès 750 € |
-| E-commerce avancé | dès 2 500 € |
+## 2. TRAFIC PRO 📲 — formation
 
-**Création de marque** — Logo · Identité visuelle · Charte · Direction artistique · Supports publicitaires · Templates réseaux sociaux
+Formation vidéo sur Twitter/X, Snapchat, TikTok, Instagram et Telegram. Objectifs : visibilité en partant de zéro, compréhension des plateformes, stratégies liées aux algorithmes, génération de trafic, développement d'audience, monétisation.
 
-| Offre | Prix |
-|---|---|
-| Brand Starter | dès 750 € |
-| Brand Launch | dès 1 500 € |
-| Brand Premium | dès 3 000 € |
+**7 modules** : 1. Introduction · 2. Règles générales · 3. Canal public Telegram · 4. Twitter/X · 5. Snapchat · 6. TikTok · 7. Instagram. Chaque module ≈ 1 h 15 à 1 h 30 minimum de vidéo. Plusieurs heures au total.
 
-**Réseaux sociaux & design** (créations pour Snapchat, Instagram, Telegram et autres réseaux)
+- **Business 1 — Trafic → Telegram** : générer du trafic, construire et attirer une audience ciblée, rediriger vers Telegram, revendre et monétiser le trafic, développer progressivement. Arbi peut aider à trouver des clients et des débouchés.
+- **Business 2 — Comptes à thème** : créer des comptes à thème, développer une audience, générer des vues, vendre de la publicité, utiliser différentes méthodes de monétisation. Arbi peut aider à trouver des clients pour les placements publicitaires.
 
-| Offre | Prix |
-|---|---|
-| Logo | 50 € |
-| Filtre Snapchat / Instagram | 50 € |
-| Flyer | 70 € |
+**Tarifs (fermes) : 1 100 € comptant · 1 500 € en 4 fois.**
 
-### 1.2 Applications & logiciels
+⚠️ Aucune promesse de revenu, de vues ou de résultat. Jamais.
 
-| Offre | Prix | Périmètre |
-|---|---|---|
-| Application web | dès 3 000 € | SaaS · CRM · ERP · Dashboard · Marketplace |
-| MVP SaaS | dès 3 500 € | Application · Paiement · Abonnements |
-| Logiciel métier | dès 5 000 € | CRM · Stocks · Facturation · API |
-| Marketplace | dès 5 000 € | Catalogue · Paiement · Vendeurs · Messagerie |
-| Application mobile | dès 5 000 € | iOS + Android · API · Notifications |
-| Mobile avancée | dès 10 000 € | IA · Paiement · Chat · Géolocalisation |
+## 3. CHINA ACCÈS 🇨🇳 — formation & agents
 
-### 1.3 IA, automatisation & bots
+Expérience : 10 ans sur place. Guangzhou, Shenzhen, différents marchés et centres commerciaux. Réseau d'agents constitué depuis des années.
 
-| Offre | Prix | Périmètre |
-|---|---|---|
-| Automatisation | dès 750 € | Workflows · CRM · Emails · Données · Reporting |
-| Bot Telegram | dès 1 000 € | Commandes · Paiements · Comptes · Notifications |
-| Bot Discord | dès 1 000 € | Rôles · Modération · Commandes · IA |
-| Intégration IA | dès 1 500 € | Chat · Analyse · Génération · Recherche |
-| Bot WhatsApp | dès 1 500 € | Réponses auto · Support client · Qualification · CRM · Notifications |
-| Agent IA | dès 2 500 € | Commercial · Support · Leads · Recherche · Reporting |
-| Automatisation avancée | dès 2 500 € | IA · API · Outils · Bases de données |
+La formation apprend à : trouver des fournisseurs fiables · sourcer des produits · rechercher un produit par photo · contacter et négocier avec des usines · utiliser WeChat et les applications chinoises utiles · travailler avec des agents · créer un compte de vente · mettre en place un tunnel de vente · développer ses réseaux sociaux · aller jusqu'aux premières ventes.
 
-### 1.4 Data, API & solutions business
+- Durée : environ 7 à 10 heures d'appels/coaching selon le profil et les besoins.
+- Délai de réception des produits : 10 à 15 jours.
+- Formation et agents sont **indépendants** : on peut prendre la formation seule, ou les agents seuls.
+- **Tarif formation : non enregistré → alerte ou @Jacob13013. Ne pas inventer.**
+- **Tarif agents : non enregistré → alerte ou @Jacob13013. Ne pas inventer.**
 
-| Offre | Prix | Périmètre |
-|---|---|---|
-| Intégration API | dès 750 € | Connexion entre logiciels et services |
-| Système de paiement | dès 750 € | Paiement · Abonnements · Checkout · Marketplace |
-| Migration de données | dès 1 000 € | — |
-| Dashboard | dès 1 500 € | Ventes · Marketing · Finance · Logistique · Reporting |
-| Création d'API | dès 1 500 € | — |
-| CRM / ERP | dès 1 500 € | Connexion · Synchronisation · Automatisation |
-| Dashboard multi-sources | dès 2 500 € | CRM · ERP · Shopify · Stripe · Analytics · API |
-| Data platform | dès 5 000 € | Centralisation · Transformation · Exploitation |
+⚠️ Les ordres de grandeur de marge à la revente ne sont jamais présentés comme un bénéfice garanti.
 
-### 1.5 Jeux & infrastructure
+## 4. VINTED PRO 🛍️ — formation
 
-| Offre | Prix | Périmètre |
-|---|---|---|
-| Mini-jeu web | dès 2 500 € | Jeux concours · Marketing · Expériences interactives |
-| Jeu vidéo sur mesure | dès 7 500 € | Game design · Gameplay · Interface · Backend · Multijoueur |
-| Hébergement & maintenance | dès 50 €/mois | Serveurs · SSL · Sauvegardes · Monitoring · Sécurité |
-| Infrastructure Business | dès 150 €/mois | Ressources renforcées · Monitoring · Maintenance |
-| Infrastructure Critical | sur devis | Haute dispo · Redondance · Scaling · Reprise après incident |
+Formation achat/revente sur Vinted : recherche de produits, niches, annonces, mots-clés, prix, développement du compte, fournisseurs, organisation, outils, ressources, accompagnement.
 
-### 1.6 Process projet — « Comment ça se passe »
+**Tarif ferme : 300 €.** Accès immédiat après paiement (paiement géré par Jacob, jamais par le bot).
 
-1. **Demande** — le client explique son projet, son besoin ou le problème à résoudre
-2. **Étude** — le besoin, les fonctionnalités et les contraintes sont définis
-3. **Devis** — le prix est établi selon le périmètre du projet
-4. **Conception & développement** — design, développement, intégrations, configuration
-5. **Tests & mise en ligne** — vérifications, corrections, déploiement
-6. **Maintenance** — hébergement, mises à jour, monitoring, évolutions
+## 5. CRÉATION DE SOCIÉTÉ 🌍
 
-Les 5 infos à collecter avant devis : idée / besoin · type de projet · fonctionnalités souhaitées · budget (si connu) · délai souhaité.
+Structures : **LLC (USA)** · **LTD (Royaume-Uni)** · **LTD (Hong Kong)**. Sujets couverts : choix de structure, création, banques et paiement, différences entre structures, accompagnement. Solutions de paiement évoquées : Wise, Mercury, Payoneer, Stripe.
 
-## 2. ARBI JACOB — CRÉA SOCIÉTÉ (international)
+Le bot oriente selon le projet en posant les bonnes questions (activité, clients visés, où encaisser).
 
-Accompagnement des entrepreneurs dans la création et le développement de sociétés à l'international : structure adaptée à l'activité, aux objectifs et à la situation du client. Atouts mis en avant : optimisation fiscale selon la situation · confidentialité selon la juridiction · solutions de paiement professionnelles · développement à l'international.
-
-### 2.1 USA — LLC (2 juridictions populaires)
-
-| Juridiction | Formules | Caractéristiques |
-|---|---|---|
-| New Mexico | 545 € / 690 € / 850 € | Confidentialité renforcée · pas de rapport annuel obligatoire · coûts de maintenance faibles · pour ceux qui cherchent discrétion et simplicité |
-| Wyoming | 799 € / 945 € / 1 130 € (Ultime) | Juridiction LLC réputée · cadre juridique éprouvé · rapport annuel obligatoire (≈ 100 €/an) · documents publics |
-
-### 2.2 Royaume-Uni — LTD
-
-500 € à 1 300 € selon le projet · délai moyen 2 à 4 jours. Structure reconnue à l'international · image professionnelle · accès aux marchés européens · solutions de paiement adaptées.
-
-### 2.3 Hong Kong — LTD
-
-1 000 € à 2 000 € selon le projet · délai moyen ≈ 7 jours. Hub commercial international · idéal import-export et trading · fiscalité simple et avantageuse · accès privilégié à l'Asie.
-
-### 2.4 Banques & solutions de paiement
-
-Stripe · Mercury · Wise · Payoneer · PayPal Business. Objectif : un environnement financier cohérent avec la société et l'activité. ⚠️ À dire systématiquement : l'ouverture d'un compte est soumise aux critères et à l'appréciation de chaque établissement.
-
-### 2.5 Quelle structure pour quel projet
-
-- USA — LLC : e-commerce, digital, services, activités internationales
-- UK — LTD : activités tournées vers l'Europe, commerce international
-- HK — LTD : import-export, commerce international, e-commerce, Asie
-
-### 2.6 Process (5 étapes)
-
-1. Étude du projet — échanges sur l'activité et les objectifs
-2. Choix de la structure — USA / UK / Hong Kong
-3. Validation de l'offre — formule adaptée au projet
-4. Création — lancement des démarches
-5. Accompagnement — solutions bancaires et de paiement selon éligibilité
-
-### 2.7 FAQ LLC USA
-
-- Faut-il être résident américain ? Non, il est possible de créer une LLC en tant que non-résident.
-- Combien de temps ? Environ 7 à 15 jours selon la formule et la juridiction.
-- Faut-il un compte bancaire américain ? Pas obligatoirement ; accompagnement possible pour trouver une solution adaptée.
-
-⚠️ Mention obligatoire : les obligations fiscales, comptables et administratives dépendent notamment de l'activité, de la résidence et de la situation de la société. L'agent ne donne jamais de conseil fiscal personnalisé.
-
-## 3. TRAFIC PRO — formation
-
-« La formation ultime pour maîtriser les réseaux sociaux et générer du trafic. »
-
-- Réseaux couverts : Twitter/X · Snapchat · Instagram · TikTok (+ Telegram)
-- Format : formation vidéo complète, plusieurs modules, minimum 1 h 15 à 1 h 30 par module, étape par étape de A à Z
-- Thèmes : stratégie · contenu · visibilité · algorithmes · monétisation
-- Promesse : apprendre les stratégies qui fonctionnent, attirer du trafic en partant de 0, transformer le trafic en clients et en revenus, méthodes testées et appliquées
-
-**2 business intégrés à la formation**
-
-- Business #1 — Trafic → Telegram : générer du trafic sur les réseaux, rediriger l'audience vers Telegram, revendre ce trafic à des clients
-- Business #2 — Comptes à thème : créer et développer des comptes à thème, construire une audience ciblée, la monétiser, vendre des espaces publicitaires
-
-Accompagnement : aide à trouver des clients et des débouchés pour les deux modèles. **Tarif : sur demande → handoff @Jacob13013.** Ordres de grandeur affichés en communication (résultats non garantis) : 2,45 M vues, 180 K clics, +84 K abonnés ; répartition du trafic Twitter/X 38 %, Snapchat 26 %, Instagram 20 %, TikTok 16 %.
-
-## 4. CHINA ACCÈS — formation & agents
-
-« Une formation pensée pour apprendre à travailler avec la Chine, même si tu pars de zéro. » 10 ans d'expérience sur place — Guangzhou · Shenzhen · marchés · fournisseurs · agents.
-
-Au programme : trouver et sélectionner des fournisseurs · contacter et négocier avec les usines · utiliser les applications chinoises · sourcer des produits rentables · mettre en place un modèle de vente · développer réseaux sociaux et ventes · comprendre la logistique et l'import.
-
-**3 formules**
-
-| Formule | Pour qui |
-|---|---|
-| Formation seule | Apprendre à travailler directement avec la Chine |
-| Agents seuls | Bénéficier des agents sur place et de leur réseau de fournisseurs |
-| Formation + agents | La solution la plus complète |
-
-Packs & tarifs — agents : 1 agent = 350 € · 2 agents = 500 € · 3 agents possible selon les recherches et l'activité. Volume d'accompagnement : 5 à 10 heures d'appels, durée adaptée au niveau et au projet. Objectif : transmettre une méthode de terrain pour devenir autonome. Délais : réception 10 à 15 jours selon le produit et l'expédition. FAQ : la formation n'est pas obligatoire pour prendre un agent — formation et agents sont indépendants.
-
-## 5. VINTED PRO — formation
-
-Canal actif dans la communauté, contenu non détaillé dans la source. Consigne agent : qualifier l'intérêt (objectif, niveau, budget), annoncer que le détail est donné en direct, puis handoff @Jacob13013. Ne rien inventer sur le contenu ni sur le prix.
+- **Aucun tarif de création de société n'est enregistré à ce jour → ne pas inventer → alerte ou @Jacob13013.**
+- ⚠️ Aucun conseil fiscal, juridique ou comptable personnalisé. Les obligations dépendent de l'activité, de la résidence et de la situation. Le bot renvoie vers un professionnel.
+- À dire systématiquement : l'ouverture d'un compte bancaire est soumise aux critères et à l'appréciation de chaque établissement.
 
 ## 6. Règles de vente transverses
 
-- Tous les prix sont « à partir de ». Un projet spécifique = devis, jamais un prix ferme improvisé.
-- Aucune promesse de résultat, de revenu, de gain ou de rendement sur les formations.
-- Aucun conseil fiscal, juridique ou comptable personnalisé sur Créa Société — orienter vers un professionnel + handoff.
-- Si le prix demandé n'est pas dans ce fichier → « je te donne le tarif exact en direct » + handoff.
-- Handoff systématique : demande de paiement, négociation, litige, réclamation, client agressif, ou 3 messages sans progression.
+- Répondre d'abord à la question posée, vendre ensuite — toujours.
+- Qualification en 3 questions maximum : objectif, budget, délai. Jamais un interrogatoire.
+- Un prix « dès » n'est jamais un prix final garanti.
+- Aucune promesse de revenu, de résultat, de vues ou de rendement.
+- Le bot n'encaisse jamais : aucun lien de paiement, aucun RIB, aucune adresse crypto, aucune prise de commande ferme. Paiement = handoff systématique, même si le client insiste.
+- Prix absent de la grille = « je te donne le tarif exact en direct » + alerte ou @Jacob13013.
+- Alerte systématique : demande de paiement, négociation, litige, réclamation, client agressif, info absente, ou 3 échanges sans progression.
