@@ -1,0 +1,37 @@
+# Image Railway : bot + dashboard dans un seul service (SQLite partagée sur le volume /app/data)
+FROM node:20-bookworm-slim AS build
+WORKDIR /app
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends python3 make g++ \
+  && rm -rf /var/lib/apt/lists/*
+COPY package.json package-lock.json ./
+COPY packages/core/package.json packages/core/
+COPY apps/bot/package.json apps/bot/
+COPY apps/dashboard/package.json apps/dashboard/
+RUN npm ci
+COPY packages/core packages/core
+COPY apps/bot apps/bot
+COPY apps/dashboard apps/dashboard
+RUN npm run build -w packages/core && npm run build -w apps/bot && npm run build -w apps/dashboard \
+  && npm prune --omit=dev
+
+FROM node:20-bookworm-slim
+WORKDIR /app
+ENV NODE_ENV=production
+# Bot + core (les symlinks workspace de node_modules restent valides)
+COPY --from=build /app/node_modules ./node_modules
+COPY --from=build /app/package.json ./package.json
+COPY --from=build /app/packages/core/package.json ./packages/core/package.json
+COPY --from=build /app/packages/core/dist ./packages/core/dist
+COPY --from=build /app/apps/bot/package.json ./apps/bot/package.json
+COPY --from=build /app/apps/bot/dist ./apps/bot/dist
+# Dashboard en sortie standalone (embarque son node_modules minimal)
+COPY --from=build /app/apps/dashboard/.next/standalone ./dashboard
+COPY --from=build /app/apps/dashboard/.next/static ./dashboard/apps/dashboard/.next/static
+# Seed du catalogue HORS de /app/data : le volume Railway masque ce chemin
+COPY data/catalogue.md ./seed/catalogue.md
+COPY scripts/start-all.mjs ./start-all.mjs
+# Le volume Railway est monté root : on reste root dans ce conteneur isolé
+RUN mkdir -p /app/data
+EXPOSE 8080
+CMD ["node", "start-all.mjs"]

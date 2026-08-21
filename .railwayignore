@@ -1,0 +1,16 @@
+# Jamais envoyé à Railway : secrets et données locales
+.env
+stack.env
+data/*.db
+data/*.db-journal
+data/*.db-wal
+data/*.db-shm
+
+node_modules
+**/node_modules
+**/.next
+**/dist
+.git
+*.log
+.DS_Store
+.playwright-mcp
