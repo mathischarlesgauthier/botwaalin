@@ -128,7 +128,8 @@ export class WhatsAppClient {
         action: {
           buttons: buttons.slice(0, 3).map((b) => ({
             type: "reply",
-            reply: { id: b.id, title: b.title.slice(0, 20) },
+            // Troncature par points de code (pas d'unité UTF-16 orpheline avec les emoji).
+            reply: { id: b.id, title: [...b.title].slice(0, 20).join("") },
           })),
         },
       },

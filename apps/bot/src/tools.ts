@@ -22,7 +22,10 @@ export function renderNiveau4Message(core: Core): string {
     .replaceAll("{telegram}", core.settings.get("telegram_contact"));
 }
 
-/** Envoie le message standard niveau 4 + les deux boutons interactifs. */
+/**
+ * Envoie le message standard niveau 4 + les deux boutons interactifs.
+ * Renvoie true UNIQUEMENT si un envoi (boutons ou texte) a réellement abouti.
+ */
 export async function sendNiveau4(
   core: Core,
   wa: WhatsAppClient,
@@ -32,12 +35,15 @@ export async function sendNiveau4(
   const result = await wa.sendButtons(waId, message, [...NIVEAU4_BUTTONS]);
   if (result.sent) {
     core.messages.insert(waId, "assistant", `${message}\n[Boutons : ⚡ Réponse rapide · 🔔 Laisser une alerte]`);
-  } else {
-    // Repli sans boutons (ex. si l'interactif est refusé) : texte seul.
-    const fallback = await wa.sendText(waId, message);
-    if (fallback.sent) core.messages.insert(waId, "assistant", message);
+    return true;
   }
-  return true;
+  // Repli sans boutons (ex. si l'interactif est refusé) : texte seul.
+  const fallback = await wa.sendText(waId, message);
+  if (fallback.sent) {
+    core.messages.insert(waId, "assistant", message);
+    return true;
+  }
+  return false;
 }
 
 export const toolDefinitions: Anthropic.Messages.Tool[] = [
@@ -170,7 +176,22 @@ export async function executeTool(
     case "niveau4_humain": {
       const parsed = motifSchema.safeParse(input);
       const motif = parsed.success ? parsed.data.motif : "non précisé";
-      await sendNiveau4(core, wa, waId);
+      const delivered = await sendNiveau4(core, wa, waId);
+      if (!delivered) {
+        // Client injoignable (fenêtre 24 h, erreur API…) : ne pas mentir au
+        // modèle ni figer le statut — alerter Jacob via la cascade (le
+        // template admin passe même hors fenêtre côté client).
+        await triggerAlert(ctx.alertDeps, {
+          waId,
+          motif: `échec d'envoi du message niveau 4 (${motif})`,
+          intention: ctx.state.lastIntent ?? "",
+          categorie: "Autre",
+          dernierMessage: ctx.lastClientMessage,
+        });
+        ctx.flags.alertFired = true;
+        logDecision(log, "niveau4_send_failed", { waId, motif });
+        return "ÉCHEC d'envoi du message standard (WhatsApp indisponible). Jacob a été alerté. Réponds au client en une phrase courte en l'orientant vers Telegram.";
+      }
       ctx.flags.niveau4Sent = true;
       core.contacts.setStatut(waId, "attente_choix");
       logDecision(log, "niveau4_sent", { waId, motif });

@@ -1,0 +1,88 @@
+- generic [active] [ref=e1]:
+  - alert [ref=e14]
+  - generic [ref=e15]:
+    - complementary [ref=e16]:
+      - generic [ref=e18]:
+        - generic [ref=e19]: ARBI JACOB
+        - generic [ref=e20]: Bot 🟢 actif
+      - navigation [ref=e21]:
+        - link "📊 Vue d'ensemble" [ref=e22] [cursor=pointer]:
+          - /url: /
+          - generic [ref=e23]: 📊
+          - generic [ref=e24]: Vue d'ensemble
+        - link "💬 Conversations" [ref=e25] [cursor=pointer]:
+          - /url: /conversations
+          - generic [ref=e26]: 💬
+          - generic [ref=e27]: Conversations
+        - link "🎯 Demandes / Leads" [ref=e28] [cursor=pointer]:
+          - /url: /leads
+          - generic [ref=e29]: 🎯
+          - generic [ref=e30]: Demandes / Leads
+        - link "❓ Questions" [ref=e31] [cursor=pointer]:
+          - /url: /questions
+          - generic [ref=e32]: ❓
+          - generic [ref=e33]: Questions
+        - link "🗂️ Catalogue & tarifs" [ref=e34] [cursor=pointer]:
+          - /url: /catalogue
+          - generic [ref=e35]: 🗂️
+          - generic [ref=e36]: Catalogue & tarifs
+        - link "⚙️ Réglages" [ref=e37] [cursor=pointer]:
+          - /url: /reglages
+          - generic [ref=e38]: ⚙️
+          - generic [ref=e39]: Réglages
+      - generic [ref=e40]:
+        - generic [ref=e41]: 👤 jacob
+        - button "Déconnexion" [ref=e43]
+    - main [ref=e44]:
+      - generic [ref=e45]:
+        - heading "Vue d'ensemble" [level=1] [ref=e46]
+        - generic [ref=e47]:
+          - generic [ref=e48]:
+            - generic [ref=e49]: Alertes ouvertes
+            - generic [ref=e50]: "0"
+          - generic [ref=e51]:
+            - generic [ref=e52]: Conversations (7 j)
+            - generic [ref=e53]: "2"
+          - generic [ref=e54]:
+            - generic [ref=e55]: Résolution sans humain (7 j)
+            - generic [ref=e56]: 100 %
+        - generic [ref=e57]:
+          - heading "KPI" [level=2] [ref=e58]
+          - table [ref=e59]:
+            - rowgroup [ref=e60]:
+              - row [ref=e61]:
+                - columnheader "Indicateur" [ref=e62]
+                - columnheader "Aujourd'hui" [ref=e63]
+                - columnheader "7 jours" [ref=e64]
+                - columnheader "30 jours" [ref=e65]
+            - rowgroup [ref=e66]:
+              - row [ref=e67]:
+                - cell "Conversations" [ref=e68]
+                - cell "1" [ref=e69]
+                - cell "2" [ref=e70]
+                - cell "2" [ref=e71]
+              - row [ref=e72]:
+                - cell "Nouveaux contacts" [ref=e73]
+                - cell "0" [ref=e74]
+                - cell "2" [ref=e75]
+                - cell "2" [ref=e76]
+              - row [ref=e77]:
+                - cell "Résolution sans humain" [ref=e78]
+                - cell "100 %" [ref=e79]
+                - cell "100 %" [ref=e80]
+                - cell "100 %" [ref=e81]
+        - generic [ref=e82]:
+          - generic [ref=e83]:
+            - heading "Demandes par catégorie (30 j)" [level=2] [ref=e84]
+            - paragraph [ref=e85]: Aucune demande enregistrée.
+          - generic [ref=e86]:
+            - heading "Top 10 des questions posées" [level=2] [ref=e87]
+            - paragraph [ref=e88]: Pas encore de questions.
+            - list
+        - generic [ref=e89]:
+          - generic [ref=e90]:
+            - heading "Questions restées sans réponse" [level=2] [ref=e91]
+            - link "Tout voir →" [ref=e92] [cursor=pointer]:
+              - /url: /questions?onglet=sans-reponse
+          - paragraph [ref=e93]: Aucune — le bot a réponse à tout 🎉
+          - list

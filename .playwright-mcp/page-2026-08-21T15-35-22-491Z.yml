@@ -1,0 +1,14 @@
+- generic [active] [ref=e1]:
+  - main [ref=e2]:
+    - generic [ref=e3]:
+      - generic [ref=e4]:
+        - heading "ARBI JACOB" [level=1] [ref=e5]
+        - paragraph [ref=e6]: Back-office de l'agent WhatsApp
+      - generic [ref=e7]:
+        - generic [ref=e8]: Identifiant
+        - textbox "Identifiant" [ref=e9]
+      - generic [ref=e10]:
+        - generic [ref=e11]: Mot de passe
+        - textbox "Mot de passe" [ref=e12]
+      - button "Se connecter" [ref=e13]
+  - alert [ref=e14]

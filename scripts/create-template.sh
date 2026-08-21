@@ -19,8 +19,9 @@ BODY_TEXT=$'🔔 NOUVELLE ALERTE — ARBI JACOB\n\nClient : {{1}}\nCatégorie : 
 
 BUTTONS='[]'
 if [[ -n "${DASHBOARD_URL:-}" ]]; then
+  # L'exemple d'un bouton URL doit être l'URL COMPLÈTE hydratée (exigence Meta).
   BUTTONS=$(cat <<JSON
-[{"type":"BUTTONS","buttons":[{"type":"URL","text":"Reprendre la conversation","url":"${DASHBOARD_URL%/}/conversations/{{1}}","example":["33612345678"]}]}]
+[{"type":"BUTTONS","buttons":[{"type":"URL","text":"Reprendre la conversation","url":"${DASHBOARD_URL%/}/conversations/{{1}}","example":["${DASHBOARD_URL%/}/conversations/33612345678"]}]}]
 JSON
 )
 fi

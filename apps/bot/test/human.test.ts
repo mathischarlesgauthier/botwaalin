@@ -51,6 +51,37 @@ describe("mode humain : le bot se tait complètement", () => {
     core.close();
   });
 
+  it("un clic de bouton ne fait pas parler le bot en mode humain", async () => {
+    const core = testCore("+33699999999");
+    core.contacts.upsert(WA_ID);
+    core.contacts.setModeHumain(WA_ID, true);
+    const wa = fakeWa();
+    const { agent } = stubAgent();
+    const handle = createHandler({
+      core, wa, agent, alertDeps: testAlertDeps(core, wa), log: silentLogger(),
+    });
+
+    await handle(WA_ID, [{ text: "[Bouton] 🔔 Laisser une alerte", buttonId: "btn_alerte" }]);
+    expect(wa.sent).toHaveLength(0);
+    expect(core.alerts.open()).toHaveLength(0);
+    core.close();
+  });
+
+  it("un clic de bouton ne répond pas quand le bot est désactivé globalement", async () => {
+    const core = testCore();
+    core.contacts.upsert(WA_ID);
+    core.settings.set("bot_actif", false);
+    const wa = fakeWa();
+    const { agent } = stubAgent();
+    const handle = createHandler({
+      core, wa, agent, alertDeps: testAlertDeps(core, wa), log: silentLogger(),
+    });
+
+    await handle(WA_ID, [{ text: "[Bouton] ⚡ Réponse rapide", buttonId: "btn_rapide" }]);
+    expect(wa.sent).toHaveLength(0);
+    core.close();
+  });
+
   it("réactivation automatique après le délai d'inactivité", () => {
     const core = testCore();
     core.contacts.upsert(WA_ID);
@@ -66,7 +97,7 @@ describe("mode humain : le bot se tait complètement", () => {
     core.close();
   });
 
-  it("PAS de réactivation si une activité récente existe", () => {
+  it("PAS de réactivation si Jacob est actif récemment", () => {
     const core = testCore();
     core.contacts.upsert(WA_ID);
     core.contacts.setModeHumain(WA_ID, true);
@@ -74,6 +105,23 @@ describe("mode humain : le bot se tait complètement", () => {
     const released = core.contacts.releaseStaleHumanMode(24 * 3600 * 1000);
     expect(released).toBe(0);
     expect(core.contacts.get(WA_ID)?.modeHumain).toBe(1);
+    core.close();
+  });
+
+  it("les messages du CLIENT ne réarment pas le délai (sinon conversation muette à jamais)", () => {
+    const core = testCore();
+    core.contacts.upsert(WA_ID);
+    core.contacts.setModeHumain(WA_ID, true);
+    core.sqlite
+      .prepare(`UPDATE contacts SET humain_depuis = ? WHERE wa_id = ?`)
+      .run(Date.now() - 25 * 3600 * 1000, WA_ID);
+    // Le client continue d'écrire, Jacob ne répond jamais.
+    core.messages.insert(WA_ID, "user", "tu es là ?", null, Date.now() - 60_000);
+    core.messages.insert(WA_ID, "user", "allo ?", null, Date.now());
+
+    const released = core.contacts.releaseStaleHumanMode(24 * 3600 * 1000);
+    expect(released).toBe(1);
+    expect(core.contacts.get(WA_ID)?.modeHumain).toBe(0);
     core.close();
   });
 });

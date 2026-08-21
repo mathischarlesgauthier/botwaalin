@@ -1,0 +1,77 @@
+- generic [active] [ref=f1e1]:
+  - generic [ref=f1e2]:
+    - complementary [ref=f1e3]:
+      - generic [ref=f1e5]:
+        - generic [ref=f1e6]: ARBI JACOB
+        - generic [ref=f1e7]: Bot 🟢 actif
+      - navigation [ref=f1e8]:
+        - link "📊 Vue d'ensemble" [ref=f1e9] [cursor=pointer]:
+          - /url: /
+          - generic [ref=f1e10]: 📊
+          - generic [ref=f1e11]: Vue d'ensemble
+        - link "💬 Conversations" [ref=f1e12] [cursor=pointer]:
+          - /url: /conversations
+          - generic [ref=f1e13]: 💬
+          - generic [ref=f1e14]: Conversations
+        - link "🎯 Demandes / Leads" [ref=f1e15] [cursor=pointer]:
+          - /url: /leads
+          - generic [ref=f1e16]: 🎯
+          - generic [ref=f1e17]: Demandes / Leads
+        - link "❓ Questions" [ref=f1e18] [cursor=pointer]:
+          - /url: /questions
+          - generic [ref=f1e19]: ❓
+          - generic [ref=f1e20]: Questions
+        - link "🗂️ Catalogue & tarifs" [ref=f1e21] [cursor=pointer]:
+          - /url: /catalogue
+          - generic [ref=f1e22]: 🗂️
+          - generic [ref=f1e23]: Catalogue & tarifs
+        - link "⚙️ Réglages" [ref=f1e24] [cursor=pointer]:
+          - /url: /reglages
+          - generic [ref=f1e25]: ⚙️
+          - generic [ref=f1e26]: Réglages
+      - generic [ref=f1e27]:
+        - generic [ref=f1e28]: 👤 jacob
+        - button "Déconnexion" [ref=f1e30]
+    - main [ref=f1e31]:
+      - generic [ref=f1e32]:
+        - generic [ref=f1e33]:
+          - heading "Conversations" [level=1] [ref=f1e34]
+          - generic [ref=f1e35]:
+            - textbox "Rechercher contact ou message…" [ref=f1e36]
+            - combobox [ref=f1e37]:
+              - option "Tous" [selected]
+              - option "Alerte"
+              - option "Humain"
+              - option "Bot"
+            - button "Filtrer" [ref=f1e38]
+        - table [ref=f1e40]:
+          - rowgroup [ref=f1e41]:
+            - row [ref=f1e42]:
+              - columnheader "Contact" [ref=f1e43]
+              - columnheader "Dernier message" [ref=f1e44]
+              - columnheader "Service" [ref=f1e45]
+              - columnheader "Statut" [ref=f1e46]
+              - columnheader "Score" [ref=f1e47]
+              - columnheader "Date" [ref=f1e48]
+          - rowgroup [ref=f1e49]:
+            - row [ref=f1e50]:
+              - cell "Arbi Jacob +33778783701" [ref=f1e51]:
+                - link "Arbi Jacob" [ref=f1e52] [cursor=pointer]:
+                  - /url: /conversations/33778783701
+                - generic [ref=f1e53]: "+33778783701"
+              - 'cell "← T''as 2 possibilités : **Filtre ou contenu Snap** pour ta marque → on peut faire le design (filtre à 50 €, templates, etc.). **Compte à thème** pour générer du trafic → ça, c''est dans la formation Trafic Pro. C''est lequel de tes besoins ?" [ref=f1e54]'
+              - cell "—" [ref=f1e55]
+              - cell "bot" [ref=f1e56]
+              - cell "—" [ref=f1e58]
+              - cell "20/08 21:22" [ref=f1e59]
+            - row [ref=f1e60]:
+              - cell "Mathis +33688439111" [ref=f1e61]:
+                - link "Mathis" [ref=f1e62] [cursor=pointer]:
+                  - /url: /conversations/33688439111
+                - generic [ref=f1e63]: "+33688439111"
+              - 'cell "← On t''aide à monter ta boîte à l''étranger selon ton activité. Trois options : **USA** (LLC dès 545 €), **UK** (LTD dès 500 €) ou **Hong Kong** (LTD dès 1 000 €). Le choix dépend de ton marché cible et de tes objectifs. Ça se passe en 5 étapes : étude de ton projet → choix de la structure → validation → création → accompagnement bancaire. L''ouverture de compte reste soumise aux critères de chaque établissement. Quel type d''activité tu veux lancer ?" [ref=f1e64]'
+              - cell "—" [ref=f1e65]
+              - cell "bot" [ref=f1e66]
+              - cell "—" [ref=f1e68]
+              - cell "18/08 19:57" [ref=f1e69]
+  - alert [ref=f1e70]

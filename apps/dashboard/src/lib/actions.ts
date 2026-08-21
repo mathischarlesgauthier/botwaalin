@@ -20,7 +20,13 @@ export async function loginAction(
   formData: FormData,
 ): Promise<{ error: string } | null> {
   const headerStore = await headers();
-  const ip = headerStore.get("x-forwarded-for")?.split(",")[0]?.trim() || "local";
+  // X-Forwarded-For est forgeable par le client : on ne s'y fie que derrière
+  // un reverse proxy de confiance (DASHBOARD_TRUST_PROXY=1). Sinon, compteur
+  // global — plus strict mais non contournable.
+  const trustProxy = process.env.DASHBOARD_TRUST_PROXY === "1";
+  const ip = trustProxy
+    ? headerStore.get("x-forwarded-for")?.split(",")[0]?.trim() || "local"
+    : "global";
   if (loginRateLimited(ip)) {
     return { error: "Trop de tentatives. Réessaie dans 15 minutes." };
   }
@@ -49,8 +55,17 @@ export async function sendHumanMessageAction(waId: string, formData: FormData): 
   if (result.sent) {
     core.messages.insert(waId, "human", text);
     core.contacts.setModeHumain(waId, true);
+    revalidatePath(`/conversations/${waId}`);
+    return;
   }
-  revalidatePath(`/conversations/${waId}`);
+  // Échec (fenêtre 24 h fermée, opt-out…) : ne pas perdre le message en silence.
+  const reason =
+    result.reason === "outside_24h_window"
+      ? "fenêtre de service 24 h fermée — le client doit t'écrire d'abord (ou utiliser un template)"
+      : result.reason === "opt_out"
+        ? "le contact s'est désabonné (STOP)"
+        : `erreur d'envoi (${result.reason ?? "inconnue"})`;
+  redirect(`/conversations/${waId}?msg=${encodeURIComponent(`⚠️ Message NON envoyé : ${reason}`)}`);
 }
 
 export async function takeOverAction(waId: string): Promise<void> {
@@ -80,9 +95,9 @@ export async function regenerateSummaryAction(waId: string): Promise<void> {
     log,
     contact?.nom,
   );
-  const state = core.state.get(waId);
-  state.resume = resume;
-  core.state.save(state);
+  // Écriture ciblée : ne touche qu'au résumé, sans écraser l'état vivant du
+  // bot (course inter-processus).
+  core.state.setResume(waId, resume);
   revalidatePath(`/conversations/${waId}`);
 }
 

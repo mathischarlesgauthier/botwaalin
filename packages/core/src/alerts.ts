@@ -136,17 +136,30 @@ export async function triggerAlert(
   for (const admin of active) {
     const adminWaId = admin.number.replace(/[^\d]/g, "");
 
-    // 1) Template approuvé (seul canal fiable hors fenêtre 24 h)
+    // 1) Template approuvé (seul canal fiable hors fenêtre 24 h).
+    // Meta rejette un corps HYDRATÉ > 1024 caractères (erreur 132018) : on
+    // budgétise le résumé en fonction des autres paramètres + texte fixe.
+    const TEMPLATE_BODY_FIXED = 113; // longueur du texte fixe du template alerte_admin
+    const p1 = flat(clientLabel, 80);
+    const p2 = flat(input.categorie, 40);
+    const p3 = flat(input.intention || "—", 40);
+    const p5 = flat(input.motif, 120);
+    const p6 = flat(input.dernierMessage, 200);
+    const resumeBudget = Math.max(
+      100,
+      1024 - TEMPLATE_BODY_FIXED - (p1.length + p2.length + p3.length + p5.length + p6.length),
+    );
+    const p4 = flat(resume, Math.min(550, resumeBudget));
     const templateResult = await deps.wa.sendTemplate(adminWaId, templateName, "fr", [
       {
         type: "body",
         parameters: [
-          { type: "text", text: flat(clientLabel, 80) },
-          { type: "text", text: flat(input.categorie, 40) },
-          { type: "text", text: flat(input.intention || "—", 40) },
-          { type: "text", text: flat(resume) },
-          { type: "text", text: flat(input.motif, 120) },
-          { type: "text", text: flat(input.dernierMessage, 200) },
+          { type: "text", text: p1 },
+          { type: "text", text: p2 },
+          { type: "text", text: p3 },
+          { type: "text", text: p4 },
+          { type: "text", text: p5 },
+          { type: "text", text: p6 },
         ],
       },
       {

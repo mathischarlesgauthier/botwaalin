@@ -1,0 +1,17 @@
+# Jamais dans le contexte de build : secrets et données de production
+.env
+stack.env
+data/*.db
+data/*.db-journal
+data/*.db-wal
+data/*.db-shm
+
+# Poids mort
+node_modules
+**/node_modules
+**/.next
+**/dist
+.git
+*.log
+.DS_Store
+.playwright-mcp

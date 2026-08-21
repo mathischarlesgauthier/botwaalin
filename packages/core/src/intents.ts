@@ -49,24 +49,29 @@ export function levenshtein(a: string, b: string): number {
 }
 
 function tolerance(len: number): number {
-  if (len <= 4) return 1;
-  if (len <= 8) return 2;
-  return 3;
+  // Patterns courts (site, agent, vinted…) : match exact uniquement, sinon
+  // « urgent »→« agent » (d=2) ou « vite »→« vinted » détournent la résolution.
+  if (len <= 5) return 0;
+  if (len <= 8) return 1;
+  return 2;
 }
 
 /**
  * Le pattern (déjà normalisé) apparaît-il dans le texte normalisé, en tolérant
  * fautes de frappe et variations légères ? Fenêtre glissante sur les mots +
- * distance de Levenshtein.
+ * distance de Levenshtein (même initiale exigée : une faute de frappe change
+ * rarement la première lettre).
  */
 export function fuzzyIncludes(normalizedText: string, normalizedPattern: string): boolean {
   if (normalizedText.includes(normalizedPattern)) return true;
+  const maxDist = tolerance(normalizedPattern.length);
+  if (maxDist === 0) return false;
   const words = normalizedText.split(" ");
   const patternWords = normalizedPattern.split(" ");
   const windowSize = patternWords.length;
-  const maxDist = tolerance(normalizedPattern.length);
   for (let i = 0; i + windowSize <= words.length; i++) {
     const window = words.slice(i, i + windowSize).join(" ");
+    if (window[0] !== normalizedPattern[0]) continue;
     if (Math.abs(window.length - normalizedPattern.length) > maxDist) continue;
     if (levenshtein(window, normalizedPattern) <= maxDist) return true;
   }
@@ -147,12 +152,16 @@ const INTENT_KEYWORDS: Array<{ intent: Intent; keywords: string[] }> = [
     intent: "sourcing",
     keywords: ["fournisseur", "sourcing", "usine", "produit en chine", "importer", "grossiste", "casquette", "echantillon"],
   },
-  { intent: "formation", keywords: ["formation", "apprendre", "coaching", "cours", "module"] },
+  { intent: "formation", keywords: ["formation", "apprendre", "coaching", "un cours", "vos cours", "module"] },
   {
     intent: "demande_personnalisee",
     keywords: ["sur mesure", "tres specifique", "particulier", "custom", "personnalise", "mon cas precis"],
   },
 ];
+
+function escapeRegex(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
 
 /** Classification lexicale rapide. Renvoie `information` si rien ne matche. */
 export function classifyIntent(text: string): { intent: Intent; matched: boolean } {
@@ -160,7 +169,13 @@ export function classifyIntent(text: string): { intent: Intent; matched: boolean
   for (const { intent, keywords } of INTENT_KEYWORDS) {
     for (const kw of keywords) {
       const nkw = normalizeText(kw);
-      if (normalized.includes(` ${nkw} `) || normalized.includes(nkw)) {
+      // Frontières de mots obligatoires (sinon « décupler » matche « decu »,
+      // « écoute » matche « coute »…), avec pluriel s/x toléré sur le dernier
+      // mot. Le repli substring brut ne sert qu'aux motifs non alphanumériques
+      // comme « € » (collé au chiffre : « 50€ »).
+      const wordHit = new RegExp(`\\s${escapeRegex(nkw)}[sx]?\\s`, "u").test(normalized);
+      const bareHit = !/^[\p{L}\p{N}]/u.test(nkw) && normalized.includes(nkw);
+      if (wordHit || bareHit) {
         return { intent, matched: true };
       }
     }

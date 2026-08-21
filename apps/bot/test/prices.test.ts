@@ -1,5 +1,6 @@
-import { allowedAmounts, findForeignPrices, formatPrice } from "@arbi/core";
+import { allowedAmounts, amountsIn, findForeignPrices, formatPrice } from "@arbi/core";
 import { beforeAll, describe, expect, it } from "vitest";
+import { buildStaticPrompt } from "../src/prompt";
 import { testCore } from "./helpers";
 
 let allowed: Set<string>;
@@ -41,6 +42,25 @@ describe("garde-fou : refus de prix hors catalogue", () => {
   it("ignore les nombres non monétaires", () => {
     expect(findForeignPrices("Livraison en 10 à 15 jours, 7 modules de 1h15", allowed)).toEqual([]);
     expect(findForeignPrices("accès aux marchés européens", allowed)).toEqual([]);
+  });
+});
+
+describe("aucun prix en dur dans le prompt (la table pricing fait autorité)", () => {
+  it("tous les montants du prompt statique viennent de la grille", () => {
+    const rows = core.pricing.active();
+    const prompt = buildStaticPrompt("", rows);
+    const allowedFromPricing = allowedAmounts(rows, "");
+    expect(findForeignPrices(prompt, allowedFromPricing)).toEqual([]);
+    expect(amountsIn(prompt).length).toBeGreaterThan(5);
+  });
+
+  it("un changement de tarif au dashboard se propage aux few-shots", () => {
+    const localCore = testCore();
+    localCore.pricing.update("logo", { prixMin: 80 });
+    const prompt = buildStaticPrompt("", localCore.pricing.active());
+    expect(prompt).toContain("« 80 €. »");
+    expect(prompt).not.toContain("« 50 €. »");
+    localCore.close();
   });
 });
 

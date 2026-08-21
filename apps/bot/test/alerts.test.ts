@@ -1,7 +1,8 @@
 import { triggerAlert } from "@arbi/core";
 import { describe, expect, it } from "vitest";
 import { analyzeInbound } from "../src/brain";
-import { fakeWa, testAlertDeps, testCore } from "./helpers";
+import { executeTool, type ToolContext } from "../src/tools";
+import { fakeLlm, fakeWa, silentLogger, testAlertDeps, testCore } from "./helpers";
 
 const WA_ID = "33612345678";
 
@@ -90,6 +91,72 @@ describe("déclenchement d'alerte", () => {
     expect(second.alertId).toBe(first.alertId);
     expect(core.alerts.open()).toHaveLength(1);
     expect(wa.sent.length).toBe(sentAfterFirst);
+    core.close();
+  });
+});
+
+describe("budget du template d'alerte (corps hydraté ≤ 1024 caractères Meta)", () => {
+  it("plafonne le résumé pour rester sous la limite, même au pire cas", async () => {
+    const core = testCore("+33699999999");
+    core.contacts.upsert(WA_ID, "Client Avec Un Nom Particulièrement Long Pour Le Test");
+    core.messages.insert(WA_ID, "user", "bonjour");
+    const wa = fakeWa();
+    const longSummary = "Résumé extrêmement détaillé. ".repeat(40); // ~1160 caractères
+    const deps = testAlertDeps(core, wa, { llm: fakeLlm(longSummary) });
+
+    await triggerAlert(deps, {
+      waId: WA_ID,
+      motif: "un motif de blocage volontairement très long pour pousser le budget du corps de template",
+      intention: "demande_personnalisee",
+      categorie: "Digital",
+      dernierMessage: "d".repeat(300),
+    });
+
+    const template = wa.sent.find((s) => s.kind === "template");
+    expect(template).toBeDefined();
+    const body = (template?.components as Array<{ type: string; parameters?: Array<{ text: string }> }>)
+      .find((c) => c.type === "body");
+    const paramsLength = (body?.parameters ?? []).reduce((sum, p) => sum + p.text.length, 0);
+    const TEMPLATE_BODY_FIXED = 113;
+    expect(paramsLength + TEMPLATE_BODY_FIXED).toBeLessThanOrEqual(1024);
+    for (const p of body?.parameters ?? []) {
+      expect(p.text).not.toMatch(/\n/);
+    }
+    core.close();
+  });
+});
+
+describe("niveau 4 : échec d'envoi géré honnêtement", () => {
+  it("double échec boutons+texte → alerte à Jacob, pas de faux statut", async () => {
+    const core = testCore("+33699999999");
+    core.contacts.upsert(WA_ID);
+    core.messages.insert(WA_ID, "user", "demande spéciale");
+    const wa = fakeWa({ buttons: "outside_24h_window", text: "outside_24h_window" });
+    // Le template admin, lui, passe (canal indépendant de la fenêtre client).
+    const failingForClientOnly = {
+      ...wa,
+      async sendTemplate(waId: string, name: string, lang?: string, components?: unknown[]) {
+        wa.sent.push({ waId, kind: "template", templateName: name, components });
+        return { sent: true };
+      },
+    };
+    const ctx: ToolContext = {
+      waId: WA_ID,
+      core,
+      wa: failingForClientOnly as never,
+      alertDeps: testAlertDeps(core, failingForClientOnly as never),
+      state: core.state.get(WA_ID),
+      log: silentLogger(),
+      flags: { alertFired: false, niveau4Sent: false },
+      lastClientMessage: "demande spéciale",
+    };
+
+    const output = await executeTool("niveau4_humain", { motif: "info absente" }, ctx);
+    expect(output).toContain("ÉCHEC");
+    expect(ctx.flags.niveau4Sent).toBe(false);
+    expect(ctx.flags.alertFired).toBe(true);
+    expect(core.contacts.get(WA_ID)?.statut).not.toBe("attente_choix");
+    expect(core.alerts.open()).toHaveLength(1);
     core.close();
   });
 });

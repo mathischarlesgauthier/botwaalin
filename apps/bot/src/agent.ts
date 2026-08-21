@@ -1,6 +1,7 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import {
   allowedAmounts,
+  amountsIn,
   checkStyleRules,
   findForeignPrices,
   logDecision,
@@ -22,9 +23,38 @@ interface HistoryRow {
 }
 
 /**
+ * Filet déterministe anti-encaissement : aucune coordonnée ou lien de paiement
+ * ne doit JAMAIS partir vers un client, même si le modèle en hallucine un.
+ * Ancré sur domaines/formats pour éviter les faux positifs (le mot « Stripe »
+ * seul est légitime dans le périmètre des offres).
+ */
+export const PAYMENT_OUTBOUND_RE = new RegExp(
+  [
+    String.raw`paypal\.(me|com)`,
+    String.raw`(checkout|buy|pay|donate)\.stripe\.com`,
+    String.raw`lydia-app\.com`,
+    String.raw`revolut\.me`,
+    String.raw`sumup\.`,
+    String.raw`paylib`,
+    String.raw`\bIBAN\b`,
+    String.raw`\bRIB\b`,
+    String.raw`\bFR\d{2}(?:\s?\d{4}){5}(?:\s?\d{1,3})?\b`, // IBAN FR
+    String.raw`\b(?:bc1|[13])[a-km-zA-HJ-NP-Z1-9]{25,39}\b`, // BTC
+    String.raw`\b0x[a-fA-F0-9]{40}\b`, // ETH/EVM
+  ].join("|"),
+  "i",
+);
+
+/** Qualificatifs acceptés autour d'un prix « dès » (jamais présenté comme final). */
+const FROM_QUALIFIER_RE =
+  /(à partir de|a partir de|d[èe]s\s|commenc|d[ée]marr|d[ée]but|minimum|entre\s|prix de d[ée]part|selon (le|ton) projet)/i;
+
+/**
  * Convertit l'historique en messages Anthropic : rôles consécutifs fusionnés,
- * premier tour "user", tout tour assistant final tronqué (prefill interdit).
- * Les messages de Jacob (role human) apparaissent côté assistant, préfixés.
+ * premier tour "user", tout tour assistant final tronqué (prefill interdit —
+ * défense en profondeur : generate() refuse déjà un historique ne se terminant
+ * pas par un tour client). Les messages de Jacob (role human) apparaissent
+ * côté assistant, préfixés.
  */
 export function toAnthropicMessages(history: HistoryRow[]): Anthropic.Messages.MessageParam[] {
   const messages: Anthropic.Messages.MessageParam[] = [];
@@ -60,11 +90,19 @@ export interface AgentResult {
   text: string | null;
   alertFired: boolean;
   niveau4Sent: boolean;
+  /**
+   * Persistance de l'état (marqueurs de style, flags groupe/cross-sell,
+   * replyCount) — appelée par respond() UNIQUEMENT quand la réponse est
+   * retenue, pour qu'une réponse jetée par la régénération ne pollue pas
+   * l'état de la conversation.
+   */
+  commit?: () => void;
 }
 
 export class SalesAgent {
   private staticPrompt = "";
   private allowed = new Set<string>();
+  private fromOnlyAmounts = new Set<string>();
   private versionStamp = "";
   private readonly maxTokens: number;
   private readonly maxIterations: number;
@@ -87,18 +125,97 @@ export class SalesAgent {
     const rows = core.pricing.active();
     this.staticPrompt = buildStaticPrompt(catalogue, rows);
     this.allowed = allowedAmounts(rows, catalogue);
+
+    // Montants qui n'existent QUE comme prix de départ (FROM) : ils devront
+    // toujours être accompagnés d'un qualificatif « à partir de » / « dès ».
+    const fixedAmounts = new Set<string>();
+    const fromAmounts = new Set<string>();
+    for (const row of rows) {
+      const target = row.type === "FROM" ? fromAmounts : fixedAmounts;
+      if (row.prixMin != null) target.add(String(row.prixMin));
+      if (row.prixMax != null) target.add(String(row.prixMax));
+      if (row.affichage) for (const a of amountsIn(row.affichage)) target.add(a);
+    }
+    this.fromOnlyAmounts = new Set([...fromAmounts].filter((a) => !fixedAmounts.has(a)));
+
     this.versionStamp = stamp;
     logDecision(this.deps.log, "knowledge_reloaded", { stamp });
   }
 
-  /** Garde-fou déterministe : aucun montant hors grille ne part vers le client. */
-  async guardReply(waId: string, reply: string, analysis: Analysis): Promise<{ text: string; blocked: boolean }> {
+  /**
+   * Prix « dès » cités comme prix fermes : pour chaque phrase contenant un
+   * montant FROM, exige un qualificatif de prix de départ.
+   */
+  private fromViolations(reply: string): string[] {
+    const violations: string[] = [];
+    for (const sentence of reply.split(/(?<=[.!?\n])/)) {
+      const cited = amountsIn(sentence).filter((a) => this.fromOnlyAmounts.has(a));
+      if (cited.length === 0) continue;
+      if (!FROM_QUALIFIER_RE.test(sentence)) violations.push(...cited);
+    }
+    return [...new Set(violations)];
+  }
+
+  /**
+   * Garde-fou déterministe de sortie : liens/coordonnées de paiement, montant
+   * cité pour un service sur devis, montants hors grille. Toute violation
+   * remplace la réponse par un renvoi vers Jacob + alerte.
+   */
+  async guardReply(
+    waId: string,
+    reply: string,
+    analysis: Analysis,
+  ): Promise<{ text: string; blocked: boolean }> {
+    const { core, log } = this.deps;
+
+    const payment = reply.match(PAYMENT_OUTBOUND_RE);
+    if (payment) {
+      logDecision(log, "payment_guard_blocked", { waId, match: payment[0] });
+      await triggerAlert(this.deps.alertDeps, {
+        waId,
+        motif: "coordonnées/lien de paiement détectés dans la réponse sortante (garde-fou)",
+        intention: analysis.intent,
+        categorie: analysis.categorie,
+        dernierMessage: analysis.combinedText.slice(0, 300),
+      });
+      const telegram = core.settings.get("telegram_contact");
+      return {
+        text: `Pour tout ce qui touche au paiement, c'est Jacob qui gère en direct : écris-lui sur Telegram ${telegram}. Il a été prévenu de ton message.`,
+        blocked: true,
+      };
+    }
+
+    const serviceRow = analysis.serviceKey ? core.pricing.byKey(analysis.serviceKey) : undefined;
+    if (serviceRow?.actif === 1 && serviceRow.type === "QUOTE" && amountsIn(reply).length > 0) {
+      logDecision(log, "price_guard_blocked", {
+        waId,
+        motif: "montant_cite_pour_service_sur_devis",
+        service: serviceRow.serviceKey,
+      });
+      return this.blockedPriceReply(waId, analysis, "montant cité pour un service sur devis");
+    }
+
     const foreign = findForeignPrices(reply, this.allowed);
-    if (foreign.length === 0) return { text: reply, blocked: false };
-    logDecision(this.deps.log, "price_guard_blocked", { waId, foreign });
+    if (foreign.length > 0) {
+      logDecision(log, "price_guard_blocked", { waId, foreign });
+      return this.blockedPriceReply(
+        waId,
+        analysis,
+        "prix demandé non présent et non calculable (garde-fou)",
+      );
+    }
+
+    return { text: reply, blocked: false };
+  }
+
+  private async blockedPriceReply(
+    waId: string,
+    analysis: Analysis,
+    motif: string,
+  ): Promise<{ text: string; blocked: boolean }> {
     await triggerAlert(this.deps.alertDeps, {
       waId,
-      motif: "prix demandé non présent et non calculable (garde-fou)",
+      motif,
       intention: analysis.intent,
       categorie: analysis.categorie,
       dernierMessage: analysis.combinedText.slice(0, 300),
@@ -117,9 +234,12 @@ export class SalesAgent {
       const result = await this.generate(waId, analysis);
       if (result.text === null) return result;
       if (pass === 0 && this.deps.core.messages.lastUserMessageId(waId) !== cursor) {
+        // Un nouveau message client est arrivé pendant la génération : on
+        // JETTE cette réponse (sans persister son état) et on régénère.
         logDecision(this.deps.log, "regenerate_after_new_message", { waId });
         continue;
       }
+      result.commit?.();
       return result;
     }
     return { text: null, alertFired: false, niveau4Sent: false };
@@ -130,12 +250,15 @@ export class SalesAgent {
     const state = core.state.get(waId);
     const flags = { alertFired: false, niveau4Sent: false };
     const history = core.messages.history(waId, 20);
-    const messages = toAnthropicMessages(history);
-    const last = messages.at(-1);
-    if (!last || last.role !== "user") {
+
+    // Si le dernier tour n'est pas un message client, le batch a déjà été
+    // couvert (régénération précédente, réponse de Jacob…) : on se tait au
+    // lieu de produire une seconde réponse au même message.
+    if (history.at(-1)?.role !== "user") {
       logDecision(log, "history_without_pending_user_turn", { waId });
       return { text: null, alertFired: false, niveau4Sent: false };
     }
+    const messages = toAnthropicMessages(history);
 
     const toolCtx: ToolContext = {
       waId,
@@ -159,6 +282,7 @@ export class SalesAgent {
     ];
 
     let styleRetried = false;
+    let fromRetried = false;
     let budget = this.maxTokens;
     let toolsUsed = false;
 
@@ -248,6 +372,34 @@ export class SalesAgent {
         logDecision(log, "style_violation_sent", { waId, violations: styleCheck.violations });
       }
 
+      // Prix « dès » présenté comme prix ferme : une régénération, sinon blocage.
+      const fromViolations = this.fromViolations(text);
+      if (fromViolations.length > 0 && !fromRetried) {
+        fromRetried = true;
+        logDecision(log, "from_price_regenerate", { waId, amounts: fromViolations });
+        messages.push({ role: "assistant", content: text });
+        messages.push({
+          role: "user",
+          content: `[Consigne interne, invisible pour le client] Les montants ${fromViolations.join(", ")} € sont des prix DE DÉPART : reformule en le disant explicitement (« à partir de », « dès », « le prix final dépend du projet »). Garde le même fond.`,
+        });
+        continue;
+      }
+      if (fromViolations.length > 0) {
+        logDecision(log, "from_price_blocked", { waId, amounts: fromViolations });
+        const blocked = await this.blockedPriceReply(
+          waId,
+          analysis,
+          "prix de départ présenté comme un prix final (garde-fou)",
+        );
+        flags.alertFired = true;
+        return {
+          text: blocked.text,
+          alertFired: true,
+          niveau4Sent: false,
+          commit: () => this.persistTurn(state, blocked.text),
+        };
+      }
+
       // Lien du groupe privé : jamais deux fois dans une conversation.
       const groupLink = core.settings.get("group_link");
       if (groupLink && text.includes(groupLink)) {
@@ -271,14 +423,18 @@ export class SalesAgent {
       const guarded = await this.guardReply(waId, text, analysis);
       if (guarded.blocked) flags.alertFired = true;
 
-      this.persistTurn(state, guarded.text);
       logDecision(log, "agent_reply", {
         waId,
         iterations: iteration + 1,
         toolsUsed,
-        priceBlocked: guarded.blocked,
+        blocked: guarded.blocked,
       });
-      return { text: guarded.text, alertFired: flags.alertFired, niveau4Sent: false };
+      return {
+        text: guarded.text,
+        alertFired: flags.alertFired,
+        niveau4Sent: false,
+        commit: () => this.persistTurn(state, guarded.text),
+      };
     }
 
     logDecision(log, "agent_max_iterations", { waId, toolsUsed });
@@ -313,7 +469,11 @@ export class SalesAgent {
     const telegram = this.deps.core.settings.get("telegram_contact");
     const state = this.deps.core.state.get(waId);
     const text = `Je préfère ne pas te répondre à moitié : Jacob a été prévenu et revient vers toi rapidement. Si tu veux aller plus vite, écris-lui directement sur Telegram ${telegram}.`;
-    this.persistTurn(state, text);
-    return { text, alertFired: true, niveau4Sent: flags.niveau4Sent };
+    return {
+      text,
+      alertFired: true,
+      niveau4Sent: flags.niveau4Sent,
+      commit: () => this.persistTurn(state, text),
+    };
   }
 }

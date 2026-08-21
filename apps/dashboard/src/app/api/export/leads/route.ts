@@ -4,7 +4,9 @@ import { getRuntime } from "@/lib/core";
 export const dynamic = "force-dynamic";
 
 function csvEscape(value: string | number | null): string {
-  const text = String(value ?? "");
+  let text = String(value ?? "");
+  // Anti-injection de formules tableur : neutralise = + - @ en tête de cellule.
+  if (/^[=+\-@\t\r]/.test(text)) text = `'${text}`;
   return `"${text.replaceAll('"', '""')}"`;
 }
 

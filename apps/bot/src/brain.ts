@@ -69,8 +69,17 @@ export function analyzeInbound(
     state.besoin = combinedText.slice(0, 160);
     progressed = true;
   }
-  if (state.serviceEnCours && resolved === null && intent === "sourcing" && !state.sousCategorie) {
-    // Ex. « des casquettes » après « je cherche un agent » : précision produit.
+  // Ex. « des casquettes » après « je cherche un agent » : une réponse courte
+  // sans nouveau service détecté est une précision produit sur le service en cours.
+  const shortProductReply =
+    Boolean(state.serviceEnCours?.startsWith("china_")) &&
+    normalizeText(combinedText).split(" ").length <= 6;
+  if (
+    state.serviceEnCours &&
+    resolved === null &&
+    (intent === "sourcing" || shortProductReply) &&
+    !state.sousCategorie
+  ) {
     state.sousCategorie = combinedText.slice(0, 80);
     progressed = true;
   }

@@ -47,8 +47,10 @@ export interface HandlerDeps {
 }
 
 /**
- * Orchestration d'un batch débouncé : opt-out → boutons → mode humain →
- * bot actif → routeur 4 niveaux → agent.
+ * Orchestration d'un batch débouncé : opt-out → mode humain → bot actif →
+ * boutons → routeur 4 niveaux → agent. Les gardes mode humain et bot actif
+ * précèdent les boutons : un clic sur un ancien bouton ne doit jamais faire
+ * parler le bot pendant que Jacob a la main (ni quand le bot est désactivé).
  */
 export function createHandler(deps: HandlerDeps) {
   return async function handleBatch(waId: string, items: InboundItem[]): Promise<void> {
@@ -78,33 +80,6 @@ export function createHandler(deps: HandlerDeps) {
       return;
     }
 
-    const lastText = items[items.length - 1]?.text ?? "";
-
-    // ── Boutons interactifs du niveau 4 ──
-    const buttonItem = items.find((i) => i.buttonId);
-    if (buttonItem?.buttonId === "btn_alerte") {
-      const state = core.state.get(waId);
-      await triggerAlert(deps.alertDeps, {
-        waId,
-        motif: "le client a demandé une alerte (bouton 🔔)",
-        intention: state.lastIntent ?? "demande_humain",
-        categorie: "Autre",
-        dernierMessage: lastText.slice(0, 300),
-      });
-      const ackResult = await wa.sendText(waId, ALERT_ACK);
-      if (ackResult.sent) core.messages.insert(waId, "assistant", ALERT_ACK);
-      logDecision(log, "button_alert", { waId });
-      return;
-    }
-    if (buttonItem?.buttonId === "btn_rapide") {
-      const telegram = core.settings.get("telegram_contact");
-      const message = `Parfait 👍 Écris directement à Jacob sur Telegram : ${telegram} — réponse rapide garantie.`;
-      const result = await wa.sendText(waId, message);
-      if (result.sent) core.messages.insert(waId, "assistant", message);
-      logDecision(log, "button_fast", { waId });
-      return;
-    }
-
     // ── Mode humain : Jacob a repris la main, le bot se tait complètement ──
     if (contact?.modeHumain) {
       logDecision(log, "silent_human_mode", { waId });
@@ -114,6 +89,38 @@ export function createHandler(deps: HandlerDeps) {
     // ── Bot désactivé globalement (réglage dashboard) ──
     if (!core.settings.get("bot_actif")) {
       logDecision(log, "bot_disabled", { waId });
+      return;
+    }
+
+    const lastText = items[items.length - 1]?.text ?? "";
+
+    // ── Boutons interactifs du niveau 4 ──
+    const buttonItem = items.find((i) => i.buttonId);
+    if (buttonItem?.buttonId === "btn_alerte") {
+      const state = core.state.get(waId);
+      const alertResult = await triggerAlert(deps.alertDeps, {
+        waId,
+        motif: "le client a demandé une alerte (bouton 🔔)",
+        intention: state.lastIntent ?? "demande_humain",
+        categorie: "Autre",
+        dernierMessage: lastText.slice(0, 300),
+      });
+      // Accusé véridique : on ne dit « Jacob est prévenu » que si un canal a marché.
+      const notified = alertResult.notifiedVia !== "" && alertResult.notifiedVia !== "aucune";
+      const ack = notified
+        ? ALERT_ACK
+        : "C'est noté, ta demande est bien enregistrée — Jacob la verra très vite.";
+      const ackResult = await wa.sendText(waId, ack);
+      if (ackResult.sent) core.messages.insert(waId, "assistant", ack);
+      logDecision(log, "button_alert", { waId, notified });
+      return;
+    }
+    if (buttonItem?.buttonId === "btn_rapide") {
+      const telegram = core.settings.get("telegram_contact");
+      const message = `Parfait 👍 Écris directement à Jacob sur Telegram : ${telegram} — réponse rapide garantie.`;
+      const result = await wa.sendText(waId, message);
+      if (result.sent) core.messages.insert(waId, "assistant", message);
+      logDecision(log, "button_fast", { waId });
       return;
     }
 
@@ -144,6 +151,10 @@ export function createHandler(deps: HandlerDeps) {
         categorie: analysis.categorie,
         dernierMessage: lastText.slice(0, 300),
       });
+      // Le compteur repart à zéro : sinon chaque message suivant re-déclenche
+      // la route alerte et enferme le client dans une boucle d'accusés.
+      state.sansProgression = 0;
+      core.state.save(state);
       const ack = analysis.intent === "reclamation" ? RECLAMATION_ACK : ALERT_ACK;
       const ackResult = await wa.sendText(waId, ack);
       if (ackResult.sent) core.messages.insert(waId, "assistant", ack);
@@ -152,7 +163,17 @@ export function createHandler(deps: HandlerDeps) {
     }
 
     if (analysis.route === "niveau4") {
-      await sendNiveau4(core, wa, waId);
+      const delivered = await sendNiveau4(core, wa, waId);
+      if (!delivered) {
+        await triggerAlert(deps.alertDeps, {
+          waId,
+          motif: "échec d'envoi du message niveau 4 (client injoignable)",
+          intention: analysis.intent,
+          categorie: analysis.categorie,
+          dernierMessage: lastText.slice(0, 300),
+        });
+        logDecision(log, "niveau4_send_failed", { waId });
+      }
       core.questions.record({ ...questionDraft, repondue: false });
       return;
     }

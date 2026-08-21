@@ -189,14 +189,19 @@ export function createCore(options: CreateCoreOptions) {
         .where(eq(schema.contacts.waId, waId))
         .run();
     },
-    /** Rend la main au bot pour les conversations en mode humain inactives depuis `delayMs`. */
+    /**
+     * Rend la main au bot pour les conversations en mode humain dont JACOB est
+     * inactif depuis `delayMs`. L'inactivité se mesure sur le rôle 'human'
+     * uniquement : les messages du client ne doivent pas réarmer le délai,
+     * sinon un client qui écrit régulièrement resterait sans réponse à jamais.
+     */
     releaseStaleHumanMode(delayMs: number): number {
       const cutoff = now() - delayMs;
       const stale = sqlite
         .prepare(
           `SELECT c.wa_id FROM contacts c
            WHERE c.mode_humain = 1
-             AND COALESCE((SELECT MAX(ts) FROM messages m WHERE m.wa_id = c.wa_id AND m.role IN ('human','user')), c.humain_depuis, 0) < ?`,
+             AND COALESCE((SELECT MAX(ts) FROM messages m WHERE m.wa_id = c.wa_id AND m.role = 'human'), c.humain_depuis, 0) < ?`,
         )
         .all(cutoff) as Array<{ wa_id: string }>;
       for (const row of stale) contactsRepo.setModeHumain(row.wa_id, false);
@@ -303,10 +308,23 @@ export function createCore(options: CreateCoreOptions) {
         resume: state.resume,
         updatedAt: now(),
       };
+      // `resume` est exclu de l'UPDATE : il appartient au dashboard (setResume).
+      // Sans ça, un save du bot pendant une régénération de résumé écraserait
+      // silencieusement le résumé fraîchement calculé (course inter-processus).
+      const { resume: _resume, ...updateSet } = values;
       db.insert(schema.conversationState)
         .values(values)
-        .onConflictDoUpdate({ target: schema.conversationState.waId, set: values })
+        .onConflictDoUpdate({ target: schema.conversationState.waId, set: updateSet })
         .run();
+    },
+    /** Écriture ciblée du résumé (dashboard) : ne touche à aucun champ vivant du bot. */
+    setResume(waId: string, resume: string): void {
+      sqlite
+        .prepare(
+          `INSERT INTO conversation_state (wa_id, resume, updated_at) VALUES (?, ?, ?)
+           ON CONFLICT(wa_id) DO UPDATE SET resume = excluded.resume, updated_at = excluded.updated_at`,
+        )
+        .run(waId, resume, now());
     },
     reset(waId: string): void {
       db.delete(schema.conversationState).where(eq(schema.conversationState.waId, waId)).run();

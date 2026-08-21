@@ -21,11 +21,14 @@ const ROLE_STYLE: Record<string, { wrap: string; bubble: string; label: string }
 
 export default async function ConversationDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ waId: string }>;
+  searchParams: Promise<{ msg?: string }>;
 }) {
   await requireSession();
   const { waId } = await params;
+  const { msg } = await searchParams;
   const { core } = getRuntime();
   const contact = core.contacts.get(waId);
   if (!contact) notFound();
@@ -70,6 +73,8 @@ export default async function ConversationDetailPage({
           )}
         </div>
       </div>
+
+      {msg && <div className="card border-amber-300 bg-amber-50 text-sm">{msg}</div>}
 
       {openAlerts.map((alert) => (
         <div key={alert.id} className="card border-red-300 bg-red-50">
