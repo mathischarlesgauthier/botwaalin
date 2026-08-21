@@ -5,7 +5,9 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-source <(grep -E '^(WHATSAPP_TOKEN|WABA_ID|DASHBOARD_URL|GRAPH_API_BASE)=' .env)
+set -a
+source ./.env
+set +a
 GRAPH="${GRAPH_API_BASE:-https://graph.facebook.com/v21.0}"
 
 if [[ -z "${WABA_ID:-}" ]]; then

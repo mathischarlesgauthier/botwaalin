@@ -4,7 +4,9 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-source <(grep -E '^(WHATSAPP_TOKEN|PHONE_NUMBER_ID|GRAPH_API_BASE)=' .env)
+set -a
+source ./.env
+set +a
 GRAPH="${GRAPH_API_BASE:-https://graph.facebook.com/v21.0}"
 PIN="${PIN:-123456}"
 
