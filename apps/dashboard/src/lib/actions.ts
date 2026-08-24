@@ -161,6 +161,27 @@ export async function saveCatalogueAction(formData: FormData): Promise<void> {
   revalidatePath("/catalogue");
 }
 
+function parseKeywords(raw: string): string[] {
+  return [
+    ...new Set(
+      raw
+        .split(/[,;\n]/)
+        .map((k) => k.trim().toLowerCase().slice(0, 60))
+        .filter(Boolean),
+    ),
+  ].slice(0, 30);
+}
+
+function slugify(label: string): string {
+  return label
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 40);
+}
+
 export async function updatePricingAction(serviceKey: string, formData: FormData): Promise<void> {
   await requireSession();
   const type = String(formData.get("type") ?? "FROM");
@@ -171,8 +192,10 @@ export async function updatePricingAction(serviceKey: string, formData: FormData
     const value = Number.parseInt(raw, 10);
     return Number.isFinite(value) && value >= 0 ? value : null;
   };
-  getRuntime().core.pricing.update(serviceKey, {
+  const { core } = getRuntime();
+  core.pricing.update(serviceKey, {
     label: String(formData.get("label") ?? "").trim() || undefined,
+    categorie: String(formData.get("categorie") ?? "").trim() || undefined,
     type,
     prixMin: parseAmount("prixMin"),
     prixMax: parseAmount("prixMax"),
@@ -180,6 +203,102 @@ export async function updatePricingAction(serviceKey: string, formData: FormData
     perimetre: String(formData.get("perimetre") ?? "").trim(),
     actif: formData.get("actif") === "on" ? 1 : 0,
   });
+  if (formData.get("keywords") !== null) {
+    core.synonyms.replaceForResolution(serviceKey, parseKeywords(String(formData.get("keywords"))));
+  }
+  revalidatePath("/catalogue");
+}
+
+export async function addServiceAction(formData: FormData): Promise<void> {
+  await requireSession();
+  const { core } = getRuntime();
+  const label = String(formData.get("label") ?? "").trim();
+  const categorie = String(formData.get("categorie") ?? "").trim() || "Digital";
+  const type = String(formData.get("type") ?? "QUOTE");
+  if (!label || !["FIXED", "FROM", "QUOTE", "RANGE"].includes(type)) {
+    redirect("/catalogue?msg=" + encodeURIComponent("⚠️ Nom du service requis."));
+  }
+  const serviceKey = slugify(String(formData.get("serviceKey") ?? "").trim() || label);
+  if (!serviceKey) {
+    redirect("/catalogue?msg=" + encodeURIComponent("⚠️ Impossible de générer une clé pour ce service."));
+  }
+  if (core.pricing.byKey(serviceKey)) {
+    redirect("/catalogue?msg=" + encodeURIComponent(`⚠️ Le service « ${serviceKey} » existe déjà.`));
+  }
+  const parseAmount = (name: string): number | null => {
+    const raw = String(formData.get(name) ?? "").replace(/\s/g, "");
+    if (!raw) return null;
+    const value = Number.parseInt(raw, 10);
+    return Number.isFinite(value) && value >= 0 ? value : null;
+  };
+  core.pricing.create({
+    serviceKey,
+    label,
+    categorie,
+    type,
+    prixMin: parseAmount("prixMin"),
+    prixMax: parseAmount("prixMax"),
+    unite: "",
+    perimetre: String(formData.get("perimetre") ?? "").trim(),
+    affichage: String(formData.get("affichage") ?? "").trim() || null,
+    actif: 1,
+  });
+  const keywords = parseKeywords(String(formData.get("keywords") ?? ""));
+  // Le libellé sert toujours de mot-clé : le service est reconnaissable d'emblée.
+  core.synonyms.replaceForResolution(serviceKey, [...new Set([label.toLowerCase(), ...keywords])]);
+  revalidatePath("/catalogue");
+  redirect("/catalogue?msg=" + encodeURIComponent(`✅ Service « ${label} » ajouté (${serviceKey}).`));
+}
+
+// ── Pôles du menu WhatsApp ──
+
+const POLE_TITLE_MAX = 24;
+const POLE_DESC_MAX = 72;
+
+export async function addMenuPoleAction(formData: FormData): Promise<void> {
+  await requireSession();
+  const { core } = getRuntime();
+  const title = String(formData.get("title") ?? "").trim().slice(0, POLE_TITLE_MAX);
+  const description = String(formData.get("description") ?? "").trim().slice(0, POLE_DESC_MAX);
+  if (!title) redirect("/catalogue?msg=" + encodeURIComponent("⚠️ Titre du pôle requis."));
+  const poles = core.settings.get("menu_poles");
+  if (poles.length >= 10) {
+    redirect("/catalogue?msg=" + encodeURIComponent("⚠️ 10 pôles maximum (limite WhatsApp)."));
+  }
+  const id = slugify(title) || `pole_${poles.length + 1}`;
+  if (poles.some((p) => p.id === id)) {
+    redirect("/catalogue?msg=" + encodeURIComponent(`⚠️ Le pôle « ${title} » existe déjà.`));
+  }
+  core.settings.set("menu_poles", [...poles, { id, title, description }]);
+  revalidatePath("/catalogue");
+  redirect("/catalogue?msg=" + encodeURIComponent(`✅ Pôle « ${title} » ajouté au menu WhatsApp.`));
+}
+
+export async function updateMenuPoleAction(id: string, formData: FormData): Promise<void> {
+  await requireSession();
+  const { core } = getRuntime();
+  const title = String(formData.get("title") ?? "").trim().slice(0, POLE_TITLE_MAX);
+  const description = String(formData.get("description") ?? "").trim().slice(0, POLE_DESC_MAX);
+  if (!title) return;
+  const poles = core.settings.get("menu_poles");
+  core.settings.set(
+    "menu_poles",
+    poles.map((p) => (p.id === id ? { ...p, title, description } : p)),
+  );
+  revalidatePath("/catalogue");
+}
+
+export async function deleteMenuPoleAction(id: string): Promise<void> {
+  await requireSession();
+  const { core } = getRuntime();
+  const poles = core.settings.get("menu_poles");
+  if (poles.length <= 1) {
+    redirect("/catalogue?msg=" + encodeURIComponent("⚠️ Le menu doit garder au moins un pôle."));
+  }
+  core.settings.set(
+    "menu_poles",
+    poles.filter((p) => p.id !== id),
+  );
   revalidatePath("/catalogue");
 }
 

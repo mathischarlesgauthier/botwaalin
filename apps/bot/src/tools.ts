@@ -216,7 +216,7 @@ export async function executeTool(
     }
 
     case "send_menu": {
-      const result = await wa.sendMenu(waId);
+      const result = await wa.sendMenu(waId, core.settings.get("menu_poles"));
       if (result.sent) {
         core.messages.insert(
           waId,

@@ -54,13 +54,20 @@ export interface SendResult {
   messageId?: string;
 }
 
-export const MENU_ROWS = [
+export interface MenuRow {
+  id: string;
+  title: string;
+  description: string;
+}
+
+/** Pôles par défaut — seed du réglage menu_poles, éditable depuis le dashboard. */
+export const MENU_ROWS: MenuRow[] = [
   { id: "digital", title: "Digital", description: "Sites, apps, IA, bots, design" },
   { id: "crea_societe", title: "Créa société", description: "LLC USA, LTD UK, LTD Hong Kong" },
   { id: "trafic_pro", title: "Trafic Pro", description: "Formation réseaux sociaux & trafic" },
   { id: "china_acces", title: "China Accès", description: "Formation & agents en Chine" },
   { id: "vinted_pro", title: "Vinted Pro", description: "Formation Vinted" },
-] as const;
+];
 
 export interface InteractiveButton {
   id: string;
@@ -137,12 +144,19 @@ export class WhatsAppClient {
   }
 
   /** Liste interactive des 5 pôles. */
-  async sendMenu(waId: string): Promise<SendResult> {
+  async sendMenu(waId: string, rows: readonly MenuRow[] = MENU_ROWS): Promise<SendResult> {
     const gate = this.gate.canSendFreeForm(waId);
     if (!gate.ok) {
       logDecision(this.log, "send_blocked", { waId, kind: "menu", reason: gate.reason });
       return { sent: false, reason: gate.reason };
     }
+    // Limites Cloud API : 10 lignes max, titre ≤ 24, description ≤ 72 (code points).
+    const source = rows.length > 0 ? rows : MENU_ROWS;
+    const safeRows = source.slice(0, 10).map((r) => ({
+      id: r.id.slice(0, 200),
+      title: [...r.title].slice(0, 24).join(""),
+      description: [...r.description].slice(0, 72).join(""),
+    }));
     return this.dispatch(waId, "menu", {
       messaging_product: "whatsapp",
       recipient_type: "individual",
@@ -151,10 +165,10 @@ export class WhatsAppClient {
       interactive: {
         type: "list",
         header: { type: "text", text: "ARBI JACOB" },
-        body: { text: "Voici nos 5 pôles. Dis-moi ce qui t'intéresse 👇" },
+        body: { text: "Voici nos pôles. Dis-moi ce qui t'intéresse 👇" },
         action: {
           button: "Découvrir",
-          sections: [{ title: "Nos pôles", rows: MENU_ROWS.map((r) => ({ ...r })) }],
+          sections: [{ title: "Nos pôles", rows: safeRows }],
         },
       },
     });

@@ -20,6 +20,7 @@ import { migrate } from "./migrations";
 import { OBJECTIONS_SEED, PRICING_SEED, SYNONYMS_SEED } from "./pricing-data";
 import type { PricingRow } from "./pricing";
 import * as schema from "./schema";
+import { MENU_ROWS, type MenuRow } from "./whatsapp";
 
 // ─── Réglages : clés, valeurs par défaut ─────────────────────────────────────
 
@@ -33,6 +34,7 @@ export const NIVEAU4_MESSAGE =
 
 export const SETTINGS_DEFAULTS = {
   admin_numbers: [] as AdminNumber[],
+  menu_poles: MENU_ROWS as MenuRow[],
   telegram_contact: "@Jacob13013",
   group_link: "https://t.me/+P6Vba87ei95lZGJk",
   bot_actif: true,
@@ -438,6 +440,33 @@ export function createCore(options: CreateCoreOptions) {
         })
         .run();
     },
+    create(input: Omit<PricingRow, "id" | "updatedAt">): PricingRow {
+      db.insert(schema.pricing)
+        .values({
+          serviceKey: input.serviceKey,
+          label: input.label,
+          categorie: input.categorie,
+          type: input.type,
+          prixMin: input.prixMin,
+          prixMax: input.prixMax,
+          unite: input.unite,
+          perimetre: input.perimetre,
+          affichage: input.affichage,
+          actif: input.actif,
+          updatedAt: now(),
+        })
+        .run();
+      const created = pricingRepo.byKey(input.serviceKey) as PricingRow;
+      db.insert(schema.pricingHistory)
+        .values({
+          serviceKey: input.serviceKey,
+          avant: null,
+          apres: JSON.stringify(created),
+          changedAt: now(),
+        })
+        .run();
+      return created;
+    },
   };
 
   // ── Catalogue versionné ──
@@ -569,6 +598,23 @@ export function createCore(options: CreateCoreOptions) {
     },
     all() {
       return db.select().from(schema.synonyms).orderBy(asc(schema.synonyms.pattern)).all();
+    },
+    forResolution(resolution: string) {
+      return db
+        .select()
+        .from(schema.synonyms)
+        .where(eq(schema.synonyms.resolution, resolution))
+        .orderBy(asc(schema.synonyms.pattern))
+        .all();
+    },
+    /** Remplace les mots-clés de reconnaissance d'un service (dashboard). */
+    replaceForResolution(resolution: string, patterns: string[]): void {
+      db.delete(schema.synonyms).where(eq(schema.synonyms.resolution, resolution)).run();
+      for (const pattern of patterns) {
+        const clean = pattern.trim();
+        if (!clean) continue;
+        db.insert(schema.synonyms).values({ pattern: clean, resolution, actif: 1 }).run();
+      }
     },
   };
 

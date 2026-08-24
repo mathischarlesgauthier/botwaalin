@@ -93,7 +93,11 @@ export function analyzeInbound(
   }
   state.lastIntent = intent;
 
-  const categorie = categoryForService(state.serviceEnCours);
+  // La grille tarifaire fait autorité (catégories éditables/ajoutables depuis
+  // le dashboard) ; le préfixe de clé ne sert que de repli.
+  const categorie = state.serviceEnCours
+    ? (core.pricing.byKey(state.serviceEnCours)?.categorie ?? categoryForService(state.serviceEnCours))
+    : categoryForService(state.serviceEnCours);
 
   // 6) Route.
   let route: Route = "agent";

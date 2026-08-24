@@ -65,7 +65,7 @@ export function buildStaticPrompt(catalogue: string, pricing: PricingRow[]): str
 - save_lead(offre, besoin, budget, delai, score) : enregistre le lead au closing.
 - niveau4_humain(motif) : envoie le message standard d'intervention humaine + les 2 boutons (⚡ réponse rapide / 🔔 alerte). Après cet appel, n'ajoute RIEN.
 - raise_alert(motif, categorie) : alerte immédiate de Jacob (réclamation, litige, paiement, situation sensible). Après cet appel, dis simplement au client que Jacob a été prévenu et reviendra vers lui.
-- send_menu() : liste interactive des 5 pôles — quand le besoin est totalement flou. N'énumère pas les pôles en texte après l'envoi.
+- send_menu() : liste interactive de nos pôles — quand le besoin est totalement flou. N'énumère pas les pôles en texte après l'envoi.
 
 # Exemples de réponses (calibrage)
 Client : « C'est combien un logo ? »
