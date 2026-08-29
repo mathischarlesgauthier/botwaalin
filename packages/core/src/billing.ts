@@ -253,7 +253,23 @@ export async function ensureStripePaymentLink(
   log: Logger,
 ): Promise<string> {
   const existing = core.settings.get("stripe_payment_link_url");
-  if (existing) return existing;
+  if (existing) {
+    const storedPrice = core.settings.get("stripe_price_id");
+    if (!storedPrice) return existing;
+    try {
+      await stripeRequest(key, `/prices/${storedPrice}`);
+      return existing; // le prix existe sur CE compte : références cohérentes
+    } catch {
+      // La clé pointe vers un autre compte Stripe (migration) : les références
+      // locales sont périmées — on les purge et on recrée sur le compte courant.
+      logDecision(log, "stripe_settings_stale_reset", { storedPrice });
+      core.settings.set("stripe_payment_link_url", "");
+      core.settings.set("stripe_price_id", "");
+      core.settings.set("stripe_customer_id", "");
+      core.settings.set("stripe_subscription_id", "");
+      core.settings.set("stripe_api_invoiced_until", "");
+    }
+  }
 
   let priceId: string = core.settings.get("stripe_price_id");
   if (!priceId) {
@@ -473,7 +489,9 @@ export async function pushApiInvoiceItems(
   const subscription = core.settings.get("stripe_subscription_id");
   if (!customer || !subscription) return 0;
   const start = Number(core.settings.getRaw("billing_start") ?? now);
-  const cursor = Number(core.settings.getRaw("stripe_api_invoiced_until") ?? start);
+  // `|| start` (et non ??) : après une migration de compte, le curseur est
+  // remis à "" → on repart de l'activation, jamais de 0 (epoch).
+  const cursor = Number(core.settings.getRaw("stripe_api_invoiced_until")) || start;
   if (now - cursor < 25 * DAY_MS) return 0;
   const row = core.sqlite
     .prepare(

@@ -130,9 +130,10 @@ async function main(): Promise<void> {
     // prochain redémarrage.
     const poll = async () => {
       try {
-        if (!core.settings.get("stripe_payment_link_url")) {
-          await ensureStripePaymentLink(core, key, log);
-        }
+        // Toujours appelé : vérifie aussi que les références mémorisées
+        // appartiennent bien au compte de la clé courante (auto-réparation
+        // après un changement de compte Stripe).
+        await ensureStripePaymentLink(core, key, log);
         await pollStripePayments(core, key, log);
         await pushApiInvoiceItems(core, key, log);
       } catch (err) {

@@ -218,6 +218,39 @@ describe("statut du service (coupures)", () => {
 describe("sondage des paiements Stripe", () => {
   afterEach(() => vi.unstubAllGlobals());
 
+  it("changement de compte Stripe : références périmées purgées et lien recréé sur le nouveau compte", async () => {
+    const core = testCore();
+    initBilling(core, T0);
+    // Références du compte PRÉCÉDENT.
+    core.settings.set("stripe_payment_link_url", "https://buy.stripe.com/ancien");
+    core.settings.set("stripe_price_id", "price_ancien");
+    core.settings.set("stripe_customer_id", "cus_ancien");
+    core.settings.set("stripe_subscription_id", "sub_ancien");
+    const json = (payload: unknown, status = 200) =>
+      new Response(JSON.stringify(payload), { status });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: unknown) => {
+        const u = String(url);
+        if (u.includes("/prices/price_ancien")) {
+          return json({ error: { message: "No such price" } }, 404); // autre compte
+        }
+        if (u.includes("/prices?lookup_keys")) return json({ data: [] });
+        if (u.endsWith("/products")) return json({ id: "prod_pro" });
+        if (u.endsWith("/prices")) return json({ id: "price_pro" });
+        if (u.endsWith("/payment_links")) return json({ url: "https://buy.stripe.com/pro" });
+        return json({ data: [] });
+      }),
+    );
+    const { ensureStripePaymentLink } = await import("@arbi/core");
+    const url = await ensureStripePaymentLink(core, "sk_live_pro", silentLogger());
+    expect(url).toBe("https://buy.stripe.com/pro");
+    expect(core.settings.get("stripe_payment_link_url")).toBe("https://buy.stripe.com/pro");
+    expect(core.settings.get("stripe_price_id")).toBe("price_pro");
+    expect(core.settings.get("stripe_customer_id")).toBe("");
+    expect(core.settings.get("stripe_subscription_id")).toBe("");
+  });
+
   it("crédite chaque facture payée une seule fois (idempotent)", async () => {
     const core = testCore();
     initBilling(core, T0);
