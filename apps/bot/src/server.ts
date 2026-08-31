@@ -1,4 +1,11 @@
-import { logDecision, verifySignature, type Core, type Logger } from "@arbi/core";
+import {
+  logDecision,
+  mediaPlaceholder,
+  verifySignature,
+  type Core,
+  type Logger,
+  type ProcessedMedia,
+} from "@arbi/core";
 import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
 import { z } from "zod";
 import type { InboundItem } from "./queue";
@@ -17,6 +24,13 @@ export interface ServerDeps {
   core: Core;
   queue: InboundQueue;
   log: Logger;
+  /** Télécharge, archive et transcrit un média entrant (photos, vocaux). */
+  processMedia?: (input: {
+    wamid: string;
+    mediaId: string;
+    type: string;
+    caption?: string;
+  }) => Promise<ProcessedMedia>;
 }
 
 const webhookMessageSchema = z.looseObject({
@@ -33,6 +47,18 @@ const webhookMessageSchema = z.looseObject({
     })
     .optional(),
   button: z.looseObject({ text: z.string().optional() }).optional(),
+  image: z.looseObject({ id: z.string().optional(), caption: z.string().optional() }).optional(),
+  audio: z.looseObject({ id: z.string().optional(), voice: z.boolean().optional() }).optional(),
+  voice: z.looseObject({ id: z.string().optional() }).optional(),
+  video: z.looseObject({ id: z.string().optional(), caption: z.string().optional() }).optional(),
+  sticker: z.looseObject({ id: z.string().optional() }).optional(),
+  document: z
+    .looseObject({
+      id: z.string().optional(),
+      caption: z.string().optional(),
+      filename: z.string().optional(),
+    })
+    .optional(),
 });
 
 const webhookSchema = z.looseObject({
@@ -66,10 +92,45 @@ const webhookSchema = z.looseObject({
 
 type WebhookMessage = z.infer<typeof webhookMessageSchema>;
 
-export function extractInbound(message: WebhookMessage): { text: string; buttonId?: string } {
+export interface InboundMedia {
+  /** Identifiant du média chez Meta, à télécharger. */
+  id: string;
+  /** image | audio | video | document | sticker */
+  type: string;
+  caption?: string;
+}
+
+export function extractInbound(message: WebhookMessage): {
+  text: string;
+  buttonId?: string;
+  media?: InboundMedia;
+} {
   switch (message.type) {
     case "text":
       return { text: message.text?.body ?? "" };
+    case "image":
+    case "audio":
+    case "voice":
+    case "video":
+    case "sticker":
+    case "document": {
+      // « voice » est la variante vocale d'audio : même traitement.
+      const kind = message.type === "voice" ? "audio" : message.type;
+      const payload = (message as Record<string, { id?: string; caption?: string } | undefined>)[
+        message.type
+      ];
+      const id = payload?.id;
+      const caption = payload?.caption;
+      const attente =
+        kind === "audio"
+          ? "[Message vocal — transcription en cours…]"
+          : `[${kind === "image" ? "Photo" : kind === "video" ? "Vidéo" : kind === "sticker" ? "Sticker" : "Document"} reçue — chargement…]`;
+      if (!id) return { text: mediaPlaceholder(kind, caption) };
+      return {
+        text: attente,
+        media: { id, type: kind, ...(caption ? { caption } : {}) },
+      };
+    }
     case "interactive": {
       const listReply = message.interactive?.list_reply;
       if (listReply) return { text: `[Choix menu] ${listReply.title}` };
@@ -176,7 +237,45 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
           const ts = message.timestamp ? Number(message.timestamp) * 1000 : Date.now();
           const profileName = profileByWaId.get(message.from);
           core.contacts.upsert(message.from, profileName ?? null);
-          core.messages.insert(message.from, "user", inbound.text, message.id, ts);
+          // Insertion immédiate : l'ordre de la conversation et la déduplication
+          // sont préservés même quand le média met du temps à arriver.
+          core.messages.insert(message.from, "user", inbound.text, message.id, ts, {
+            type: inbound.media?.type,
+          });
+
+          if (inbound.media && deps.processMedia) {
+            const media = inbound.media;
+            const waId = message.from;
+            const wamid = message.id;
+            // Le webhook répond tout de suite ; le bot n'est réveillé qu'une fois
+            // la photo archivée / le vocal transcrit, pour qu'il réponde au contenu réel.
+            void (async () => {
+              const processed = await deps.processMedia!({
+                wamid,
+                mediaId: media.id,
+                type: media.type,
+                ...(media.caption ? { caption: media.caption } : {}),
+              });
+              core.messages.attachMedia(wamid, {
+                contenu: processed.text,
+                file: processed.mediaFile,
+                mime: processed.mediaMime,
+              });
+              queue.push(waId, { text: processed.text, profileName });
+              logDecision(log, "media_processed", {
+                waId,
+                wamid,
+                type: media.type,
+                transcrit: processed.transcribed,
+                archive: Boolean(processed.mediaFile),
+              });
+            })().catch((err) => {
+              log.error({ err: String(err), wamid }, "media_pipeline_failed");
+              queue.push(waId, { text: mediaPlaceholder(media.type, media.caption), profileName });
+            });
+            continue;
+          }
+
           queue.push(message.from, {
             text: inbound.text,
             profileName,

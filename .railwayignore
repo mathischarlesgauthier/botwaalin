@@ -14,3 +14,4 @@ node_modules
 *.log
 .DS_Store
 .playwright-mcp
+data/media/

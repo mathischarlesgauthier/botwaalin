@@ -127,6 +127,47 @@ export default async function ConversationDetailPage({
                         minute: "2-digit",
                       })}
                     </div>
+                    {message.mediaFile && (
+                      <div className="mb-1">
+                        {message.mediaMime.startsWith("image/") ? (
+                          <a
+                            href={`/api/media/${message.mediaFile}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={`/api/media/${message.mediaFile}`}
+                              alt="Photo envoyée par le client"
+                              className="max-h-64 rounded-lg border border-neutral-200"
+                            />
+                          </a>
+                        ) : message.mediaMime.startsWith("audio/") ? (
+                          <audio
+                            controls
+                            preload="none"
+                            src={`/api/media/${message.mediaFile}`}
+                            className="w-full max-w-xs"
+                          />
+                        ) : message.mediaMime.startsWith("video/") ? (
+                          <video
+                            controls
+                            preload="none"
+                            src={`/api/media/${message.mediaFile}`}
+                            className="max-h-64 rounded-lg border border-neutral-200"
+                          />
+                        ) : (
+                          <a
+                            href={`/api/media/${message.mediaFile}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-sm text-blue-600 underline"
+                          >
+                            📎 Ouvrir le fichier reçu
+                          </a>
+                        )}
+                      </div>
+                    )}
                     <div className="whitespace-pre-wrap text-sm">{message.contenu}</div>
                   </div>
                 </div>

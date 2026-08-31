@@ -19,6 +19,11 @@ export const messages = sqliteTable("messages", {
   contenu: text("contenu").notNull(),
   wamid: text("wamid"),
   ts: integer("ts").notNull(),
+  /** image | audio | video | document | sticker — vide pour un message texte. */
+  mediaType: text("media_type").notNull().default(""),
+  /** Nom du fichier archivé dans le dossier média (jamais un chemin). */
+  mediaFile: text("media_file").notNull().default(""),
+  mediaMime: text("media_mime").notNull().default(""),
 });
 
 export const leads = sqliteTable("leads", {

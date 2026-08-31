@@ -223,8 +223,35 @@ export function createCore(options: CreateCoreOptions) {
       contenu: string,
       wamid: string | null = null,
       ts: number = now(),
+      media?: { type?: string; file?: string; mime?: string },
     ): void {
-      db.insert(schema.messages).values({ waId, role, contenu, wamid, ts }).run();
+      db.insert(schema.messages)
+        .values({
+          waId,
+          role,
+          contenu,
+          wamid,
+          ts,
+          mediaType: media?.type ?? "",
+          mediaFile: media?.file ?? "",
+          mediaMime: media?.mime ?? "",
+        })
+        .run();
+    },
+    /** Complète un message média une fois téléchargé/transcrit (traitement différé). */
+    attachMedia(
+      wamid: string,
+      patch: { contenu?: string; file?: string; mime?: string },
+    ): void {
+      const set: Record<string, string> = {};
+      if (patch.contenu !== undefined) set.contenu = patch.contenu;
+      if (patch.file !== undefined) set.media_file = patch.file;
+      if (patch.mime !== undefined) set.media_mime = patch.mime;
+      const keys = Object.keys(set);
+      if (keys.length === 0) return;
+      sqlite
+        .prepare(`UPDATE messages SET ${keys.map((k) => `${k} = ?`).join(", ")} WHERE wamid = ?`)
+        .run(...keys.map((k) => set[k]), wamid);
     },
     hasWamid(wamid: string): boolean {
       return (

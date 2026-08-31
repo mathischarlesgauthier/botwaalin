@@ -31,6 +31,14 @@ const envSchema = z.object({
   LLM_COST_OUTPUT_CENTS_PER_MTOK: z.coerce.number().nonnegative().default(230),
   /** "1" = coupure forcée, "0" = jamais de coupure, "auto" = coupure si Stripe configuré. */
   BILLING_ENFORCE: z.string().default("auto"),
+  /** Dossier d'archivage des médias reçus (volume persistant). */
+  MEDIA_DIR: z.string().default("data/media"),
+  /** Transcription des vocaux : endpoint compatible OpenAI. Vide = désactivée. */
+  TRANSCRIBE_API_KEY: z.string().default(""),
+  TRANSCRIBE_API_URL: z.string().default("https://api.openai.com/v1/audio/transcriptions"),
+  TRANSCRIBE_MODEL: z.string().default("whisper-1"),
+  /** Coût interne de la transcription, en centimes d'euro par minute. */
+  TRANSCRIBE_COST_CENTS_PER_MIN: z.coerce.number().nonnegative().default(0.6),
 });
 
 export type Config = z.infer<typeof envSchema>;

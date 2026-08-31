@@ -19,12 +19,15 @@ CREATE TABLE IF NOT EXISTS contacts (
 );
 
 CREATE TABLE IF NOT EXISTS messages (
-  id      INTEGER PRIMARY KEY AUTOINCREMENT,
-  wa_id   TEXT NOT NULL,
-  role    TEXT NOT NULL,
-  contenu TEXT NOT NULL,
-  wamid   TEXT,
-  ts      INTEGER NOT NULL
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  wa_id      TEXT NOT NULL,
+  role       TEXT NOT NULL,
+  contenu    TEXT NOT NULL,
+  wamid      TEXT,
+  ts         INTEGER NOT NULL,
+  media_type TEXT NOT NULL DEFAULT '',
+  media_file TEXT NOT NULL DEFAULT '',
+  media_mime TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_messages_wa ON messages (wa_id, id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_messages_wamid ON messages (wamid) WHERE wamid IS NOT NULL;
@@ -238,6 +241,15 @@ export function migrate(db: BetterSqlite3.Database): void {
       CREATE UNIQUE INDEX IF NOT EXISTS idx_messages_wamid ON messages (wamid) WHERE wamid IS NOT NULL;
       COMMIT;
     `);
+  }
+
+  // v2.2 : archivage des médias reçus (photos, vocaux) pour le back-office.
+  // Après l'éventuelle reconstruction ci-dessus, qui ne recopie que les colonnes v1.
+  const msgCols = tableColumns(db, "messages");
+  if (msgCols.size > 0 && !msgCols.has("media_type")) {
+    db.exec(`ALTER TABLE messages ADD COLUMN media_type TEXT NOT NULL DEFAULT ''`);
+    db.exec(`ALTER TABLE messages ADD COLUMN media_file TEXT NOT NULL DEFAULT ''`);
+    db.exec(`ALTER TABLE messages ADD COLUMN media_mime TEXT NOT NULL DEFAULT ''`);
   }
 
   db.pragma("user_version = 2");

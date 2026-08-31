@@ -4,6 +4,7 @@ export * from "./db";
 export * from "./intents";
 export * from "./llm";
 export * from "./logger";
+export * from "./media";
 export * from "./pricing";
 export { OBJECTIONS_SEED, PRICING_SEED, SYNONYMS_SEED, type PriceType, type PricingSeed } from "./pricing-data";
 export * from "./style";

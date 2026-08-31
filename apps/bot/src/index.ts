@@ -7,6 +7,7 @@ import {
   initBilling,
   ensureStripePaymentLink,
   pollStripePayments,
+  processInboundMedia,
   pushApiInvoiceItems,
   recordUsage,
   WhatsAppClient,
@@ -97,6 +98,33 @@ async function main(): Promise<void> {
     core,
     queue,
     log,
+    processMedia: (input) =>
+      processInboundMedia(
+        {
+          media: {
+            apiBase: config.GRAPH_API_BASE,
+            token: config.WHATSAPP_TOKEN,
+            dir: config.MEDIA_DIR,
+          },
+          transcription: {
+            apiUrl: config.TRANSCRIBE_API_URL,
+            apiKey: config.TRANSCRIBE_API_KEY,
+            model: config.TRANSCRIBE_MODEL,
+            costCentsPerMinute: config.TRANSCRIBE_COST_CENTS_PER_MIN,
+          },
+          log,
+          // La transcription est un coût API : facturée comme les appels LLM.
+          onTranscriptionCost: (costCentimes, seconds, model) =>
+            recordUsage(core, {
+              model: `transcription:${model}`,
+              inputTokens: Math.round(seconds),
+              outputTokens: 0,
+              costCentimes,
+              billedCentimes: costCentimes * config.LLM_MARKUP,
+            }),
+        },
+        input,
+      ),
   });
   await app.listen({ port: config.PORT, host: "0.0.0.0" });
   log.info(
