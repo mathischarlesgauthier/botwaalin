@@ -44,7 +44,7 @@ export default async function ConversationDetailPage({
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <Link href="/conversations" className="text-sm text-neutral-500 hover:underline">
+          <Link href="/admin/conversations" className="text-sm text-neutral-500 hover:underline">
             ← Conversations
           </Link>
           <h1 className="text-2xl font-bold">

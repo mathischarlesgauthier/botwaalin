@@ -10,3 +10,4 @@ data/*.db-shm
 *.log
 *.tsbuildinfo
 .DS_Store
+.playwright-mcp/

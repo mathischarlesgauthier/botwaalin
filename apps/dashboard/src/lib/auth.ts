@@ -55,7 +55,7 @@ export async function getSessionUser(): Promise<string | null> {
 /** À appeler en tête de chaque page protégée. */
 export async function requireSession(): Promise<string> {
   const user = await getSessionUser();
-  if (!user) redirect("/login");
+  if (!user) redirect("/admin/login");
   return user;
 }
 

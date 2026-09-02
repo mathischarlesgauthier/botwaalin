@@ -49,6 +49,8 @@ export const SETTINGS_DEFAULTS = {
   stripe_price_id: "",
   stripe_customer_id: "",
   stripe_subscription_id: "",
+  /** Textes marketing du site vitrine (JSON libre : types et seed côté dashboard). */
+  site_content: {} as Record<string, unknown>,
 } as const;
 
 export type SettingsKey = keyof typeof SETTINGS_DEFAULTS;

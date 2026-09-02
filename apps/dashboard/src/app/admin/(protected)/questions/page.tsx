@@ -24,13 +24,13 @@ export default async function QuestionsPage({
 
       <div className="flex gap-2">
         <Link
-          href="/questions?onglet=frequentes"
+          href="/admin/questions?onglet=frequentes"
           className={`btn ${onglet === "frequentes" ? "btn-primary" : "btn-secondary"}`}
         >
           Questions fréquentes ({groups.length})
         </Link>
         <Link
-          href="/questions?onglet=sans-reponse"
+          href="/admin/questions?onglet=sans-reponse"
           className={`btn ${onglet === "sans-reponse" ? "btn-primary" : "btn-secondary"}`}
         >
           Sans réponse ({unanswered.length})
@@ -81,7 +81,7 @@ export default async function QuestionsPage({
               <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                 <div className="font-medium">{question.texte}</div>
                 <Link
-                  href={`/conversations/${question.waId}`}
+                  href={`/admin/conversations/${question.waId}`}
                   className="text-sm text-neutral-500 hover:underline"
                 >
                   Voir la conversation →

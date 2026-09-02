@@ -74,7 +74,7 @@ export default async function ConversationsPage({
             {rows.map((row) => (
               <tr key={row.waId} className="border-t border-neutral-100 hover:bg-neutral-50">
                 <td className="px-4 py-2">
-                  <Link href={`/conversations/${row.waId}`} className="font-medium hover:underline">
+                  <Link href={`/admin/conversations/${row.waId}`} className="font-medium hover:underline">
                     {row.nom || `+${row.waId}`}
                   </Link>
                   <div className="text-xs text-neutral-400">+{row.waId}</div>

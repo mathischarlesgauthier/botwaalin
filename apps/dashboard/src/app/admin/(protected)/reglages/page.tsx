@@ -135,7 +135,7 @@ export default async function ReglagesPage({
               name="dashboard_url"
               defaultValue={core.settings.get("dashboard_url")}
               className="input"
-              placeholder="https://dashboard.exemple.com"
+              placeholder="https://exemple.com/admin"
             />
           </div>
           <div>

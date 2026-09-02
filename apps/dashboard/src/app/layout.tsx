@@ -1,9 +1,9 @@
 import type { Metadata, Viewport } from "next";
-import "./globals.css";
 
+// Layout racine minimal : le site public (`(site)/`) et le back-office
+// (`admin/`) apportent chacun leur propre CSS et leurs propres metadata.
 export const metadata: Metadata = {
-  title: "ARBI JACOB — Dashboard",
-  description: "Back-office de l'agent commercial WhatsApp",
+  title: "ARBI JACOB",
 };
 
 export const viewport: Viewport = {
@@ -13,7 +13,9 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="fr">
+    // `no-js` : fallback sans JavaScript du site public (retirée par un script
+    // inline du layout (site) ; sans effet sur le back-office).
+    <html lang="fr" className="no-js" suppressHydrationWarning>
       <body>{children}</body>
     </html>
   );

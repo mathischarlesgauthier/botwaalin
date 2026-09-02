@@ -1,14 +1,15 @@
 # ARBI JACOB v2 — Agent commercial WhatsApp + Back-office
 
-Agent commercial IA sur WhatsApp Business (marque ARBI JACOB, pôle digital GHOST STUDIO) : personnalité calibrée, mémoire de conversation, routeur à 4 niveaux, moteur tarifaire centralisé, système d'alerte WhatsApp, et **dashboard web** (conversations, résumés, leads, questions, catalogue éditable, réglages). LLM : Claude ou tout endpoint compatible Anthropic (config actuelle : **Kimi `kimi-k2.6`** via Moonshot).
+Agent commercial IA sur WhatsApp Business (marque ARBI JACOB, pôle digital GHOST STUDIO) : personnalité calibrée, mémoire de conversation, routeur à 4 niveaux, moteur tarifaire centralisé, système d'alerte WhatsApp, et **dashboard web** (conversations, résumés, leads, questions, catalogue éditable, site vitrine, réglages), plus un **site vitrine public** dont les prix et textes sont pilotés depuis le back-office. LLM : Claude ou tout endpoint compatible Anthropic (config actuelle : **Kimi `kimi-k2.6`** via Moonshot).
 
 ## Architecture
 
 ```
 apps/bot         Webhook Meta (HMAC), débounce 2,5 s, routeur 4 niveaux, agent tool-use,
                  garde-fou prix, anti-répétition de style, alertes, mode humain
-apps/dashboard   Next.js 15 (App Router + Tailwind) : KPI, conversations, leads,
-                 questions, catalogue & tarifs, réglages — auth argon2 + cookie signé
+apps/dashboard   Next.js 15 (App Router) : site vitrine public à la racine (/) et
+                 back-office sous /admin (KPI, conversations, leads, questions,
+                 catalogue & tarifs, site vitrine, réglages) — auth argon2 + cookie signé
 packages/core    Drizzle + better-sqlite3 (migrations auto v1→v2), moteur tarifaire
                  (FIXED/FROM/QUOTE/RANGE), intentions (synonymes + Levenshtein),
                  registre de style, alertes (template → texte → e-mail), client WhatsApp
@@ -23,7 +24,8 @@ Le bot et le dashboard partagent la même base SQLite (WAL) via le volume `./dat
 cp .env.example .env    # remplir (voir procédure Meta ci-dessous)
 docker compose up --build -d
 # Bot        → http://localhost:3000  (webhook /webhook, santé /health)
-# Dashboard  → http://localhost:3001
+# Site public → http://localhost:3001
+# Dashboard   → http://localhost:3001/admin
 ```
 
 Exposer le webhook en HTTPS et le brancher chez Meta automatiquement :
@@ -37,8 +39,9 @@ Développement local : `npm install`, `npm test` (60+ tests), `npm run dev:bot`,
 ## Première connexion au dashboard
 
 1. Renseigne `DASHBOARD_USER`, `DASHBOARD_PASSWORD` et `DASHBOARD_SESSION_SECRET` dans `.env`.
-2. Ouvre `http://localhost:3001` → connexion. Au premier login réussi, le mot de passe est stocké **hashé (argon2)** en base ; l'env n'est plus consulté ensuite.
+2. Ouvre `http://localhost:3001/admin` → connexion. Au premier login réussi, le mot de passe est stocké **hashé (argon2)** en base ; l'env n'est plus consulté ensuite.
 3. Va dans **Réglages** : vérifie le numéro WhatsApp d'alerte (bouton « Envoyer un message de test »), le contact Telegram, le lien du groupe privé.
+4. **Site vitrine** : les prix et libellés du site public viennent de *Catalogue & tarifs* ; les textes marketing se règlent dans *Site vitrine* (`/admin/site`). Le site est servi à la racine du même domaine.
 
 ## Logique du bot (résumé)
 
@@ -78,7 +81,7 @@ Si Meta rejette le template, reformule-le dans WhatsApp Manager → Modèles de 
 
 ## Déploiement du dashboard
 
-- **Docker (inclus)** : service `dashboard` du compose, port 3001. Mets un reverse proxy HTTPS devant et reporte l'URL publique dans Réglages → « URL publique du dashboard ».
+- **Docker (inclus)** : service `dashboard` du compose, port 3001 (site public à la racine, back-office sous `/admin`). Mets un reverse proxy HTTPS devant et reporte l'URL publique **avec `/admin`** dans Réglages → « URL publique du dashboard » (une URL sans `/admin` reste acceptée : les anciennes routes `/login`, `/conversations/…`, etc. sont redirigées en 308 vers `/admin/…`). Variable facultative `SITE_URL` = URL publique du site vitrine (sitemap, Open Graph).
 - **Vercel (alternatif)** : le dashboard exige un accès disque à la SQLite partagée — sur Vercel il faut migrer `packages/core` vers Postgres (Drizzle rend le changement de driver contenu). Le déploiement recommandé reste Docker sur le même hôte que le bot.
 - Sur un hôte **Linux** : `sudo chown -R 1000:1000 data/` avant le premier lancement.
 

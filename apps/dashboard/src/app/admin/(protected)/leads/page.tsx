@@ -48,7 +48,7 @@ export default async function LeadsPage() {
               return (
                 <tr key={lead.id} className="border-t border-neutral-100">
                   <td className="px-4 py-2">
-                    <Link href={`/conversations/${lead.waId}`} className="font-medium hover:underline">
+                    <Link href={`/admin/conversations/${lead.waId}`} className="font-medium hover:underline">
                       {contact?.nom || `+${lead.waId}`}
                     </Link>
                   </td>

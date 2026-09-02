@@ -40,7 +40,7 @@ export default async function OverviewPage() {
             {openAlerts.length}
           </div>
           {openAlerts.length > 0 && (
-            <Link href="/conversations?statut=alerte" className="text-sm text-red-600 underline">
+            <Link href="/admin/conversations?statut=alerte" className="text-sm text-red-600 underline">
               Voir les conversations en alerte →
             </Link>
           )}
@@ -123,7 +123,7 @@ export default async function OverviewPage() {
       <div className="card">
         <div className="mb-3 flex items-center justify-between">
           <h2 className="font-semibold">Questions restées sans réponse</h2>
-          <Link href="/questions?onglet=sans-reponse" className="text-sm underline">
+          <Link href="/admin/questions?onglet=sans-reponse" className="text-sm underline">
             Tout voir →
           </Link>
         </div>
@@ -134,7 +134,7 @@ export default async function OverviewPage() {
           {unanswered.map((q) => (
             <li key={q.id} className="flex items-center gap-2">
               <span className="badge badge-alerte">!</span>
-              <Link href={`/conversations/${q.waId}`} className="hover:underline">
+              <Link href={`/admin/conversations/${q.waId}`} className="hover:underline">
                 {q.texte}
               </Link>
             </li>

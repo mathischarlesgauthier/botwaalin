@@ -6,14 +6,16 @@ import { getRuntime } from "@/lib/core";
 
 export const dynamic = "force-dynamic";
 
+// Tout le back-office vit sous /admin ; la racine du domaine est le site public.
 const NAV = [
-  { href: "/", label: "Vue d'ensemble", icon: "📊" },
-  { href: "/conversations", label: "Conversations", icon: "💬" },
-  { href: "/leads", label: "Demandes / Leads", icon: "🎯" },
-  { href: "/questions", label: "Questions", icon: "❓" },
-  { href: "/catalogue", label: "Catalogue & tarifs", icon: "🗂️" },
-  { href: "/facturation", label: "Abonnement", icon: "💳" },
-  { href: "/reglages", label: "Réglages", icon: "⚙️" },
+  { href: "/admin", label: "Vue d'ensemble", icon: "📊" },
+  { href: "/admin/conversations", label: "Conversations", icon: "💬" },
+  { href: "/admin/leads", label: "Demandes / Leads", icon: "🎯" },
+  { href: "/admin/questions", label: "Questions", icon: "❓" },
+  { href: "/admin/catalogue", label: "Catalogue & tarifs", icon: "🗂️" },
+  { href: "/admin/site", label: "Site vitrine", icon: "🌐" },
+  { href: "/admin/facturation", label: "Abonnement", icon: "💳" },
+  { href: "/admin/reglages", label: "Réglages", icon: "⚙️" },
 ];
 
 export default async function ProtectedLayout({ children }: { children: React.ReactNode }) {
@@ -44,18 +46,27 @@ export default async function ProtectedLayout({ children }: { children: React.Re
             >
               <span>{item.icon}</span>
               <span>{item.label}</span>
-              {item.href === "/conversations" && openAlerts > 0 && (
+              {item.href === "/admin/conversations" && openAlerts > 0 && (
                 <span className="ml-auto rounded-full bg-red-600 px-2 py-0.5 text-xs font-bold">
                   {openAlerts}
                 </span>
               )}
-              {item.href === "/facturation" && billingWarn && (
+              {item.href === "/admin/facturation" && billingWarn && (
                 <span className="ml-auto rounded-full bg-amber-500 px-2 py-0.5 text-xs font-bold text-black">
                   !
                 </span>
               )}
             </Link>
           ))}
+          <a
+            href="/"
+            target="_blank"
+            rel="noopener"
+            className="flex items-center gap-2 whitespace-nowrap rounded-lg px-3 py-2 text-sm text-neutral-400 hover:bg-neutral-800 hover:text-white"
+          >
+            <span>↗</span>
+            <span>Voir le site</span>
+          </a>
         </nav>
         <div className="mt-auto hidden items-center justify-between px-4 py-4 text-sm text-neutral-400 md:flex">
           <span>👤 {user}</span>
