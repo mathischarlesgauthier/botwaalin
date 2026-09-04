@@ -16,7 +16,9 @@ import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { drizzle, type BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname } from "node:path";
+import { normalizeText } from "./intents";
 import { migrate } from "./migrations";
+import { amountsIn } from "./pricing";
 import { OBJECTIONS_SEED, PRICING_SEED, SYNONYMS_SEED } from "./pricing-data";
 import type { PricingRow } from "./pricing";
 import * as schema from "./schema";
@@ -27,6 +29,47 @@ import { MENU_ROWS, type MenuRow } from "./whatsapp";
 export interface AdminNumber {
   number: string;
   actif: boolean;
+}
+
+// ─── Nouvelles tables (documents, mémoire client, exemples appris) ──────────
+
+export interface DocumentRow {
+  id: number;
+  nom: string;
+  fichier: string;
+  mime: string;
+  taille: number;
+  contenu: string;
+  extractionReason: string;
+  note: string;
+  actif: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface FactRow {
+  id: number;
+  waId: string;
+  fait: string;
+  source: "bot" | "jacob" | "auto";
+  actif: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface ExampleRow {
+  id: number;
+  waId: string;
+  question: string;
+  reponse: string;
+  theme: string;
+  statut: "en_attente" | "actif" | "rejete";
+  motifRejet: string;
+  messageId: number | null;
+  /** Nombre d'échecs techniques de `reviewExample` (JSON illisible, erreur réseau…) — voir `recordFailedAttempt`. */
+  attempts: number;
+  createdAt: number;
+  updatedAt: number;
 }
 
 export const NIVEAU4_MESSAGE =
@@ -44,7 +87,21 @@ export const SETTINGS_DEFAULTS = {
   niveau4_message: NIVEAU4_MESSAGE,
   objections: OBJECTIONS_SEED,
   alert_template_name: "alerte_admin",
+  /** Langue Meta du template d'alerte (ex. "fr") — utilisée par `sendTemplate`. */
+  alert_template_lang: "fr",
   alert_email_to: "",
+  /** Template de relance client hors fenêtre 24 h. Vide = bouton de relance absent. */
+  relance_template_name: "",
+  /** Guide de style appris, régénérable depuis le back-office (§6), injecté après « Personnalité ». */
+  style_guide_appris: "",
+  /**
+   * Brouillon produit par `regenerateStyleGuideAction`, JAMAIS injecté dans le
+   * prompt : le résultat du LLM peut reprendre un prénom/détail d'un message
+   * client (source = 40 derniers messages `human`, tous contacts confondus).
+   * Publié dans `style_guide_appris` uniquement après relecture explicite de
+   * Jacob (bouton « Enregistrer »).
+   */
+  style_guide_appris_brouillon: "",
   stripe_payment_link_url: "",
   stripe_price_id: "",
   stripe_customer_id: "",
@@ -219,6 +276,7 @@ export function createCore(options: CreateCoreOptions) {
 
   // ── Messages ──
   const messagesRepo = {
+    /** Renvoie l'id AUTOINCREMENT de la ligne insérée (ex. capture d'exemple appris depuis un message `human`). */
     insert(
       waId: string,
       role: "user" | "assistant" | "human",
@@ -226,8 +284,9 @@ export function createCore(options: CreateCoreOptions) {
       wamid: string | null = null,
       ts: number = now(),
       media?: { type?: string; file?: string; mime?: string },
-    ): void {
-      db.insert(schema.messages)
+    ): number {
+      const result = db
+        .insert(schema.messages)
         .values({
           waId,
           role,
@@ -239,6 +298,22 @@ export function createCore(options: CreateCoreOptions) {
           mediaMime: media?.mime ?? "",
         })
         .run();
+      return Number(result.lastInsertRowid);
+    },
+    /**
+     * Supprime UNIQUEMENT un message `role = 'human'` (garde dans le WHERE, pas
+     * une vérification préalable en JS) : un message client ou bot n'est jamais
+     * supprimable, sinon la fenêtre 24 h et l'historique du modèle deviendraient faux.
+     */
+    deleteHuman(id: number): boolean {
+      const result = sqlite.prepare(`DELETE FROM messages WHERE id = ? AND role = 'human'`).run(id);
+      return result.changes > 0;
+    },
+    /** 40 derniers messages `human`, tous contacts confondus (guide de style appris, §6). */
+    lastHumanMessages(limit = 40): Array<{ contenu: string }> {
+      return sqlite
+        .prepare(`SELECT contenu FROM messages WHERE role = 'human' ORDER BY id DESC LIMIT ?`)
+        .all(limit) as Array<{ contenu: string }>;
     },
     /** Complète un message média une fois téléchargé/transcrit (traitement différé). */
     attachMedia(
@@ -659,6 +734,266 @@ export function createCore(options: CreateCoreOptions) {
     },
   };
 
+  // ── Documents de référence pour le prompt (§3) ──
+  const documentsRepo = {
+    list(): DocumentRow[] {
+      return db.select().from(schema.documents).orderBy(desc(schema.documents.id)).all() as DocumentRow[];
+    },
+    /** Actifs, dans l'ordre d'upload (id ASC) : ordre d'injection dans le prompt. */
+    actifs(): DocumentRow[] {
+      return db
+        .select()
+        .from(schema.documents)
+        .where(eq(schema.documents.actif, 1))
+        .orderBy(asc(schema.documents.id))
+        .all() as DocumentRow[];
+    },
+    get(id: number): DocumentRow | undefined {
+      return db.select().from(schema.documents).where(eq(schema.documents.id, id)).get() as
+        | DocumentRow
+        | undefined;
+    },
+    create(input: {
+      nom: string;
+      fichier: string;
+      mime: string;
+      taille: number;
+      contenu: string;
+      extractionReason: string;
+      note: string;
+    }): DocumentRow {
+      const result = db
+        .insert(schema.documents)
+        .values({ ...input, actif: 1, createdAt: now(), updatedAt: now() })
+        .run();
+      return documentsRepo.get(Number(result.lastInsertRowid)) as DocumentRow;
+    },
+    /** Seuls `note`/`actif` sont éditables après upload — contenu/fichier/mime/taille sont immuables. */
+    update(id: number, patch: Partial<Pick<DocumentRow, "note" | "actif">>): void {
+      db.update(schema.documents).set({ ...patch, updatedAt: now() }).where(eq(schema.documents.id, id)).run();
+    },
+    remove(id: number): boolean {
+      const result = db.delete(schema.documents).where(eq(schema.documents.id, id)).run();
+      return result.changes > 0;
+    },
+    /** Invalidation du prompt (agent.ts:refreshKnowledge) : compte + dernière modification des actifs. */
+    stamp(): { n: number; m: number } {
+      return sqlite
+        .prepare(`SELECT COUNT(*) AS n, COALESCE(MAX(updated_at), 0) AS m FROM documents WHERE actif = 1`)
+        .get() as { n: number; m: number };
+    },
+  };
+
+  // ── Mémoire client durable (§5) ──
+  /** Faits actifs d'un client, du plus récent au plus ancien, sans plafond (usage interne). */
+  function activeFactRows(waId: string): FactRow[] {
+    return db
+      .select()
+      .from(schema.clientFacts)
+      .where(and(eq(schema.clientFacts.waId, waId), eq(schema.clientFacts.actif, 1)))
+      .orderBy(desc(schema.clientFacts.id))
+      .all() as FactRow[];
+  }
+
+  const FACTS_MAX_ACTIVE = 20;
+
+  const factsRepo = {
+    list(waId: string): FactRow[] {
+      return db
+        .select()
+        .from(schema.clientFacts)
+        .where(eq(schema.clientFacts.waId, waId))
+        .orderBy(desc(schema.clientFacts.id))
+        .all() as FactRow[];
+    },
+    actifs(waId: string, limit = FACTS_MAX_ACTIVE): FactRow[] {
+      return activeFactRows(waId).slice(0, limit);
+    },
+    /**
+     * Filtre déterministe (amountsIn) indépendant de la consigne texte donnée au
+     * LLM d'extraction ; déduplication exacte (normalizeText) contre les faits
+     * actifs existants ; plafond FACTS_MAX_ACTIVE, éviction des plus anciens
+     * `source = 'auto'` uniquement (jamais un fait 'jacob'/'bot').
+     */
+    add(waId: string, fait: string, source: FactRow["source"]): FactRow | null {
+      const clean = fait.trim();
+      if (!clean || amountsIn(clean).length > 0) return null;
+      const normalized = normalizeText(clean);
+      const active = activeFactRows(waId);
+      const duplicate = active.find((f) => normalizeText(f.fait) === normalized);
+      if (duplicate) {
+        db.update(schema.clientFacts).set({ updatedAt: now() }).where(eq(schema.clientFacts.id, duplicate.id)).run();
+        return { ...duplicate, updatedAt: now() };
+      }
+      const result = db
+        .insert(schema.clientFacts)
+        .values({ waId, fait: clean, source, actif: 1, createdAt: now(), updatedAt: now() })
+        .run();
+      const created = db
+        .select()
+        .from(schema.clientFacts)
+        .where(eq(schema.clientFacts.id, Number(result.lastInsertRowid)))
+        .get() as FactRow;
+      const overflow = active.length + 1 - FACTS_MAX_ACTIVE;
+      if (overflow > 0) {
+        const evictable = active.filter((f) => f.source === "auto").sort((a, b) => a.id - b.id);
+        for (const row of evictable.slice(0, overflow)) {
+          db.update(schema.clientFacts).set({ actif: 0, updatedAt: now() }).where(eq(schema.clientFacts.id, row.id)).run();
+        }
+      }
+      return created;
+    },
+    remove(id: number): boolean {
+      const result = db.delete(schema.clientFacts).where(eq(schema.clientFacts.id, id)).run();
+      return result.changes > 0;
+    },
+    toggle(id: number): void {
+      const row = db.select().from(schema.clientFacts).where(eq(schema.clientFacts.id, id)).get() as
+        | FactRow
+        | undefined;
+      if (!row) return;
+      db.update(schema.clientFacts)
+        .set({ actif: row.actif ? 0 : 1, updatedAt: now() })
+        .where(eq(schema.clientFacts.id, id))
+        .run();
+    },
+    /** Remplace les faits de source 'auto' d'un client (extraction en tâche de fond) — ne touche jamais 'jacob'/'bot'. */
+    replaceAuto(waId: string, faits: string[]): void {
+      const run = sqlite.transaction(() => {
+        for (const row of activeFactRows(waId).filter((f) => f.source === "auto")) {
+          db.update(schema.clientFacts).set({ actif: 0, updatedAt: now() }).where(eq(schema.clientFacts.id, row.id)).run();
+        }
+        for (const fait of faits) factsRepo.add(waId, fait, "auto");
+      });
+      run();
+    },
+  };
+
+  // ── Apprentissage : exemples de réponses de Jacob (§6) ──
+  const examplesRepo = {
+    /** Assemblage de `question` (derniers messages client) fait par l'appelant — repo = CRUD nu. */
+    capture(input: {
+      waId: string;
+      question: string;
+      reponse: string;
+      theme?: string;
+      messageId: number | null;
+    }): number | null {
+      const question = input.question.trim().slice(0, 600);
+      const reponse = input.reponse.trim().slice(0, 600);
+      if (question === "") return null;
+      const result = db
+        .insert(schema.learnedExamples)
+        .values({
+          waId: input.waId,
+          question,
+          reponse,
+          theme: input.theme ?? "",
+          statut: "en_attente",
+          motifRejet: "",
+          messageId: input.messageId,
+          createdAt: now(),
+          updatedAt: now(),
+        })
+        .run();
+      return Number(result.lastInsertRowid);
+    },
+    /** Défaut : 200 lignes, les plus récentes d'abord. Le timer de revue passe `{ limit: 10, order: 'asc' }` (FIFO). */
+    list(statut?: ExampleRow["statut"], opts?: { limit?: number; order?: "asc" | "desc" }): ExampleRow[] {
+      const limit = opts?.limit ?? 200;
+      const orderFn = opts?.order === "asc" ? asc : desc;
+      if (statut) {
+        return db
+          .select()
+          .from(schema.learnedExamples)
+          .where(eq(schema.learnedExamples.statut, statut))
+          .orderBy(orderFn(schema.learnedExamples.id))
+          .limit(limit)
+          .all() as ExampleRow[];
+      }
+      return db
+        .select()
+        .from(schema.learnedExamples)
+        .orderBy(orderFn(schema.learnedExamples.id))
+        .limit(limit)
+        .all() as ExampleRow[];
+    },
+    actifs(limit = 12): ExampleRow[] {
+      return db
+        .select()
+        .from(schema.learnedExamples)
+        .where(eq(schema.learnedExamples.statut, "actif"))
+        .orderBy(desc(schema.learnedExamples.id))
+        .limit(limit)
+        .all() as ExampleRow[];
+    },
+    get(id: number): ExampleRow | undefined {
+      return db.select().from(schema.learnedExamples).where(eq(schema.learnedExamples.id, id)).get() as
+        | ExampleRow
+        | undefined;
+    },
+    /** `COUNT(*)` par statut (ou global) — pour les compteurs de badges, sans rapatrier `question`/`reponse`. */
+    count(statut?: ExampleRow["statut"]): number {
+      const row = statut
+        ? sqlite
+            .prepare(`SELECT COUNT(*) AS n FROM learned_examples WHERE statut = ?`)
+            .get(statut) as { n: number }
+        : (sqlite.prepare(`SELECT COUNT(*) AS n FROM learned_examples`).get() as { n: number });
+      return row.n;
+    },
+    update(id: number, patch: Partial<Pick<ExampleRow, "question" | "reponse" | "theme">>): void {
+      db.update(schema.learnedExamples)
+        .set({ ...patch, updatedAt: now() })
+        .where(eq(schema.learnedExamples.id, id))
+        .run();
+    },
+    setStatut(id: number, statut: ExampleRow["statut"], motif = ""): void {
+      db.update(schema.learnedExamples)
+        .set({ statut, motifRejet: motif, updatedAt: now() })
+        .where(eq(schema.learnedExamples.id, id))
+        .run();
+    },
+    /**
+     * Échec technique de `reviewExample` (JSON illisible, erreur réseau…) :
+     * incrémente `attempts` ; au-delà de `maxAttempts`, rejette automatiquement
+     * au lieu de laisser la ligne `en_attente` indéfiniment — sans ce plafond,
+     * un exemple systématiquement en échec est retenté à CHAQUE passe du timer
+     * (coût LLM récurrent non borné) ET occupe en permanence une des 10 places
+     * du lot FIFO, gelant la file pour tout nouvel exemple valide.
+     */
+    recordFailedAttempt(id: number, maxAttempts = 3): void {
+      const row = examplesRepo.get(id);
+      if (!row) return;
+      const attempts = row.attempts + 1;
+      if (attempts >= maxAttempts) {
+        db.update(schema.learnedExamples)
+          .set({ attempts, statut: "rejete", motifRejet: "échec technique répété", updatedAt: now() })
+          .where(eq(schema.learnedExamples.id, id))
+          .run();
+        return;
+      }
+      db.update(schema.learnedExamples).set({ attempts, updatedAt: now() }).where(eq(schema.learnedExamples.id, id)).run();
+    },
+    remove(id: number): boolean {
+      const result = db.delete(schema.learnedExamples).where(eq(schema.learnedExamples.id, id)).run();
+      return result.changes > 0;
+    },
+    /** Suppression en cascade depuis `messages.deleteHuman` (§7). */
+    removeByMessageId(messageId: number): boolean {
+      const result = db
+        .delete(schema.learnedExamples)
+        .where(eq(schema.learnedExamples.messageId, messageId))
+        .run();
+      return result.changes > 0;
+    },
+    /** Un exemple encore 'en_attente' ne doit pas déclencher de rechargement du prompt : seuls les 'actif' comptent. */
+    stamp(): { n: number; m: number } {
+      return sqlite
+        .prepare(`SELECT COUNT(*) AS n, COALESCE(MAX(updated_at), 0) AS m FROM learned_examples WHERE statut = 'actif'`)
+        .get() as { n: number; m: number };
+    },
+  };
+
   // ── Vue dashboard : liste des conversations ──
   function conversationOverview(): Array<{
     waId: string;
@@ -759,6 +1094,9 @@ export function createCore(options: CreateCoreOptions) {
     users: usersRepo,
     synonyms: synonymsRepo,
     handoffs: handoffsRepo,
+    documents: documentsRepo,
+    facts: factsRepo,
+    examples: examplesRepo,
     conversationOverview,
     close(): void {
       sqlite.close();

@@ -17,6 +17,31 @@ export function verifySignature(
   return expected.length === given.length && crypto.timingSafeEqual(expected, given);
 }
 
+export interface ServiceWindowState {
+  /** true si un message libre peut encore être envoyé (hors template). */
+  open: boolean;
+  /** Millisecondes restantes avant fermeture (0 si déjà fermée). */
+  msLeft: number;
+  /** Millisecondes écoulées depuis la fermeture (null si la fenêtre est ouverte, ou n'a jamais été ouverte). */
+  closedSince: number | null;
+}
+
+/**
+ * État de la fenêtre de service WhatsApp de 24 h, pour affichage back-office
+ * (indicateur permanent §4.1). Ne change AUCUNE règle d'envoi : `createGate`
+ * reste la seule autorité qui bloque/autorise réellement les envois.
+ */
+export function serviceWindow(lastInboundTs: number | null, now: number): ServiceWindowState {
+  if (lastInboundTs === null) {
+    return { open: false, msLeft: 0, closedSince: null };
+  }
+  const elapsed = now - lastInboundTs;
+  if (elapsed <= SERVICE_WINDOW_MS) {
+    return { open: true, msLeft: SERVICE_WINDOW_MS - elapsed, closedSince: null };
+  }
+  return { open: false, msLeft: 0, closedSince: elapsed - SERVICE_WINDOW_MS };
+}
+
 export interface GateDb {
   getContact(waId: string): { optOut: number } | undefined;
   lastInboundTs(waId: string): number | null;

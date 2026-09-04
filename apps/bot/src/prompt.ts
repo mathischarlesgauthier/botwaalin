@@ -1,20 +1,105 @@
 import {
   describeOffer,
   toneInstruction,
+  DOCUMENT_PROMPT_BUDGET_CHARS,
   type ConversationStateData,
+  type DocumentRow,
+  type ExampleRow,
+  type FactRow,
   type PricingRow,
 } from "@arbi/core";
 
 /**
- * Partie STABLE du system prompt (cacheable) : persona, règles, few-shots.
- * Le catalogue et la grille tarifaire y sont injectés — ils changent rarement
- * (nouvelle version = nouveau cache).
+ * Section « Documents de référence » (§3) : les documents actifs sont pris
+ * dans l'ordre de la liste (déjà id ASC = ordre d'upload) jusqu'au budget de
+ * DOCUMENT_PROMPT_BUDGET_CHARS caractères. Le document qui dépasse est
+ * tronqué au reste disponible ; les suivants sont totalement omis et
+ * signalés par une ligne dédiée — obligatoire : sans elle, le modèle pourrait
+ * croire à tort qu'il voit tous les documents actifs et répondre avec une
+ * fausse confiance plutôt que de router en niveau 4.
  */
-export function buildStaticPrompt(catalogue: string, pricing: PricingRow[]): string {
+function buildDocumentsSection(documents: DocumentRow[]): string {
+  if (documents.length === 0) return "";
+  let used = 0;
+  let omitted = 0;
+  const blocks: string[] = [];
+  for (const doc of documents) {
+    if (used >= DOCUMENT_PROMPT_BUDGET_CHARS) {
+      omitted += 1;
+      continue;
+    }
+    const remaining = DOCUMENT_PROMPT_BUDGET_CHARS - used;
+    let contenu = doc.contenu;
+    if (contenu.length > remaining) {
+      contenu = `${contenu.slice(0, remaining)}\n[…document tronqué — budget de contexte atteint]`;
+      used = DOCUMENT_PROMPT_BUDGET_CHARS;
+    } else {
+      used += contenu.length;
+    }
+    blocks.push(`## ${doc.nom} — ${doc.note}\n${contenu}`);
+  }
+  const omittedLine = omitted > 0 ? `\n(${omitted} document(s) non inclus, budget de contexte atteint)` : "";
+  return `
+
+# Documents de référence fournis par Jacob (contexte complémentaire)
+<documents>
+${blocks.join("\n\n")}${omittedLine}
+</documents>
+Ces documents complètent le catalogue. Ils NE font PAS autorité sur les prix : tout montant vient de la grille tarifaire. Si un document contredit la grille ou le catalogue, la grille et le catalogue gagnent. Si l'information n'est ni dans la grille, ni dans le catalogue, ni dans ces documents : niveau 4.`;
+}
+
+/**
+ * Section « Réponses de Jacob dont tu dois t'inspirer » (§6) : top 12 exemples
+ * appris actifs, les plus récents. Le contenu factuel (prix, délais,
+ * disponibilités) n'est JAMAIS repris ici : deterministicRejectReason()
+ * (packages/core/src/learning.ts) garantit qu'aucun exemple porteur d'un
+ * montant n'atteint jamais le statut 'actif'.
+ */
+function buildExamplesSection(examples: ExampleRow[]): string {
+  if (examples.length === 0) return "";
+  const top = examples.slice(0, 12);
+  const paires = top.map((ex) => `Client : ${ex.question}\nJacob : ${ex.reponse}`).join("\n\n");
+  // Enveloppé d'un \n unique de chaque côté : le point d'insertion garde déjà
+  // les \n de la ligne vide qui l'entoure, un saut de plus doublerait l'écart.
+  return `
+# Réponses de Jacob dont tu dois t'inspirer (ton, formulation, angle)
+${paires}
+Imite le TON et la STRUCTURE, jamais le contenu factuel : les prix, délais et disponibilités viennent toujours de la grille et du catalogue.
+`;
+}
+
+/** Section « Guide de style appris » (§6), insérée juste après la Personnalité. */
+function buildStyleGuideSection(styleGuide: string): string {
+  const guide = styleGuide.trim();
+  if (!guide) return "";
+  return `
+# Guide de style observé chez Jacob (à respecter)
+${guide}
+Applique ces règles de ton EN PLUS de la Personnalité ci-dessus. En cas de contradiction, la Personnalité prime.
+`;
+}
+
+/**
+ * Partie STABLE du system prompt (cacheable) : persona, règles, few-shots,
+ * documents de référence, exemples appris, guide de style. Le catalogue et la
+ * grille tarifaire y sont injectés — ils changent rarement (nouvelle version =
+ * nouveau cache). `documents`/`examples`/`styleGuide` sont optionnels pour ne
+ * rien casser côté appelants existants (tests notamment).
+ */
+export function buildStaticPrompt(
+  catalogue: string,
+  pricing: PricingRow[],
+  documents: DocumentRow[] = [],
+  examples: ExampleRow[] = [],
+  styleGuide = "",
+): string {
   const grille = pricing
     .filter((p) => p.actif === 1)
     .map((p) => `- [${p.serviceKey}] ${describeOffer(p)}`)
     .join("\n");
+  const styleGuideSection = buildStyleGuideSection(styleGuide);
+  const examplesSection = buildExamplesSection(examples);
+  const documentsSection = buildDocumentsSection(documents);
 
   // Aucun prix en dur dans le prompt : les montants des exemples viennent de
   // la grille — si Jacob change un tarif au dashboard, les few-shots suivent.
@@ -35,7 +120,7 @@ export function buildStaticPrompt(catalogue: string, pricing: PricingRow[]): str
 - INTERDITS ABSOLUS de style : « Yo », « Wesh », langage jeune artificiel, argot forcé, vulgarité, « Bonjour cher client », « Comment puis-je vous assister aujourd'hui ? », tournures administratives, avalanche d'emojis.
 - Emojis : très rares. Un seul maximum, et seulement s'il apporte quelque chose.
 - Longueur : question simple = réponse simple (« C'est combien un logo ? » → « ${montant("logo")}. » et c'est tout). Question complexe = réponse détaillée. Jamais le catalogue entier sur une question à 3 mots. Cible : 2 à 6 lignes dans 80 % des cas.
-
+${styleGuideSection}
 # Logique à 4 niveaux
 1. Réponse immédiate : l'info est dans la base → tu réponds, point.
 2. Qualification : le service est connu mais le besoin est flou → UNE question pour préciser. Ex. « Je veux un site. » → « Oui bien sûr. Tu veux plutôt un site vitrine ou une boutique pour vendre tes produits ? »
@@ -85,14 +170,14 @@ Toi : « ${montant("trafic_pro")}. »
 
 Client : « Je veux un truc très particulier que tu n'as pas détaillé. »
 Toi : (appel de l'outil niveau4_humain, rien d'autre)
-
+${examplesSection}
 # Grille tarifaire officielle (seule source de prix autorisée)
 ${grille}
 
 # Catalogue (base de connaissances)
 <catalogue>
 ${catalogue}
-</catalogue>`;
+</catalogue>${documentsSection}`;
 }
 
 /**
@@ -103,10 +188,20 @@ export function buildDynamicContext(
   state: ConversationStateData,
   groupLink: string,
   telegramContact: string,
+  // Mémoire client (§5) : DONNÉE PERSONNELLE d'UN client → reste ici, dans le
+  // contexte DYNAMIQUE reconstruit à chaque appel, jamais dans buildStaticPrompt
+  // (caché, structurellement partagé entre toutes les conversations).
+  // NE JAMAIS déplacer `facts` vers buildStaticPrompt.
+  facts: FactRow[] = [],
 ): string {
   const lines: string[] = [];
   lines.push(`# Contexte de CETTE conversation (à consulter AVANT de répondre)`);
   lines.push(`- Registre détecté du client : ${state.toneRegister}. ${toneInstruction(state.toneRegister)}`);
+
+  if (facts.length > 0) {
+    lines.push(`- Ce que tu sais déjà de ce client (mémoire) : ${facts.map((f) => f.fait).join(" · ")}`);
+    lines.push(`  Utilise-le naturellement, ne redemande jamais une information déjà connue, ne récite pas cette liste.`);
+  }
 
   if (state.serviceEnCours) {
     lines.push(

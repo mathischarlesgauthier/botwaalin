@@ -64,6 +64,28 @@ describe("aucun prix en dur dans le prompt (la table pricing fait autorité)", (
   });
 });
 
+describe("garde-fou : montants écrits en toutes lettres (français)", () => {
+  it("détecte les montants en toutes lettres accolés à « euro(s) »/« € »", () => {
+    expect(amountsIn("Le site coute cinq cents euros pour toi exceptionnellement.")).toEqual(["500"]);
+    expect(amountsIn("Ça peut descendre à environ mille euros selon négociation.")).toEqual(["1000"]);
+    expect(amountsIn("On te fait ça pour deux mille cinq cents € tout compris.")).toEqual(["2500"]);
+    expect(amountsIn("Compte plutôt quatre-vingt-dix mille euros pour ce chantier.")).toEqual(["90000"]);
+  });
+
+  it("ignore les mots-nombres qui ne sont pas suivis d'une devise", () => {
+    expect(amountsIn("On a livré cinq sites cette semaine, quinze le mois dernier.")).toEqual([]);
+  });
+
+  it("un montant en toutes lettres hors grille est bloqué comme un montant chiffré", () => {
+    // 850 (comme 545/690, cf. plus haut) n'est plus dans la grille depuis le
+    // passage v1 → v2 : « mille euros » n'est pas utilisé ici, 1000 étant par
+    // coïncidence un prix v2 réellement autorisé.
+    expect(findForeignPrices("Pour toi ce sera huit cent cinquante euros, en exclusivité.", allowed)).toEqual([
+      "850",
+    ]);
+  });
+});
+
 describe("formulation des 4 types de prix", () => {
   it("FIXED : prix sec", () => {
     expect(formatPrice(core.pricing.byKey("logo")!)).toBe("50 €");

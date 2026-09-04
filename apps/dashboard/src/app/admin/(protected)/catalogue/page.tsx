@@ -1,14 +1,58 @@
-import { formatPrice, type PricingRow } from "@arbi/core";
+import { DOCUMENT_ALLOWED_EXTENSIONS, DOCUMENT_MAX_ACTIVE, formatPrice, type DocumentRow, type PricingRow } from "@arbi/core";
 import {
   addMenuPoleAction,
   addServiceAction,
+  deleteDocumentAction,
   deleteMenuPoleAction,
   saveCatalogueAction,
+  toggleDocumentAction,
   updateMenuPoleAction,
   updatePricingAction,
+  uploadDocumentAction,
 } from "@/lib/actions";
 import { requireSession } from "@/lib/auth";
 import { getRuntime } from "@/lib/core";
+import { formatFileSize } from "@/lib/documents";
+
+function DocumentCard({ doc }: { doc: DocumentRow }) {
+  const extrait = doc.contenu.slice(0, 200) + (doc.contenu.length > 200 ? "…" : "");
+  return (
+    <div
+      className={`flex flex-col gap-1 border-t border-neutral-100 py-3 text-sm ${doc.actif ? "" : "opacity-50"}`}
+    >
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <span className="font-medium">{doc.nom}</span>{" "}
+          <span className="text-xs text-neutral-400">
+            {formatFileSize(doc.taille)} · {new Date(doc.createdAt).toLocaleDateString("fr-FR")}
+            {!doc.actif && " · inactif"}
+          </span>
+        </div>
+        <div className="flex gap-2">
+          <a href={`/api/documents/${doc.id}`} className="btn btn-secondary">
+            ⬇️ Télécharger
+          </a>
+          <form action={toggleDocumentAction.bind(null, doc.id)}>
+            <button className="btn btn-secondary" type="submit">
+              {doc.actif ? "Désactiver" : "Activer"}
+            </button>
+          </form>
+          <form action={deleteDocumentAction.bind(null, doc.id)}>
+            <button className="btn btn-danger" type="submit">
+              🗑️
+            </button>
+          </form>
+        </div>
+      </div>
+      {doc.note && <div className="text-xs text-neutral-500">Note : {doc.note}</div>}
+      {doc.extractionReason ? (
+        <div className="text-xs text-amber-700">⚠️ {doc.extractionReason}</div>
+      ) : (
+        extrait && <div className="text-xs text-neutral-400">{extrait}</div>
+      )}
+    </div>
+  );
+}
 
 export const dynamic = "force-dynamic";
 
@@ -104,6 +148,8 @@ export default async function CataloguePage({
   const pricing = core.pricing.all();
   const categories = [...new Set(pricing.map((p) => p.categorie))];
   const poles = core.settings.get("menu_poles");
+  const documents = core.documents.list();
+  const activeDocuments = documents.filter((d) => d.actif === 1).length;
   const allSynonyms = core.synonyms.all();
   const keywordsFor = (serviceKey: string) =>
     allSynonyms
@@ -252,6 +298,47 @@ export default async function CataloguePage({
             </button>
           </div>
         </form>
+      </div>
+
+      <div className="card">
+        <h2 className="mb-1 font-semibold">📎 Documents de référence</h2>
+        <p className="mb-3 text-xs text-neutral-500">
+          Le bot se base sur le catalogue ET sur ces documents (contexte complémentaire). Ils ne
+          font jamais autorité sur les prix — seule la grille tarifaire fixe les montants. Formats
+          acceptés : {DOCUMENT_ALLOWED_EXTENSIONS.join(", ")} · 5 Mo max · {DOCUMENT_MAX_ACTIVE} documents
+          actifs maximum ({activeDocuments}/{DOCUMENT_MAX_ACTIVE} actuellement).
+        </p>
+        <p className="mb-3 text-xs text-amber-700">
+          ⚠️ Plus tu ajoutes de documents (et d&apos;exemples appris), plus chaque réponse du bot
+          coûte un peu plus cher — même mise en cache.
+        </p>
+        <form action={uploadDocumentAction} className="grid grid-cols-1 items-end gap-2 rounded-lg border border-dashed border-neutral-300 p-3 md:grid-cols-12">
+          <div className="md:col-span-5">
+            <span className="label">Fichier</span>
+            <input
+              type="file"
+              name="fichier"
+              accept={DOCUMENT_ALLOWED_EXTENSIONS.join(",")}
+              className="input"
+              required
+            />
+          </div>
+          <div className="md:col-span-5">
+            <span className="label">À quoi sert ce document ?</span>
+            <input name="note" className="input" placeholder="ex. Conditions générales de vente" />
+          </div>
+          <div className="md:col-span-2">
+            <button className="btn btn-primary w-full" type="submit">
+              ⬆️ Envoyer
+            </button>
+          </div>
+        </form>
+        {documents.map((doc) => (
+          <DocumentCard key={doc.id} doc={doc} />
+        ))}
+        {documents.length === 0 && (
+          <p className="py-4 text-center text-sm text-neutral-400">Aucun document pour le moment.</p>
+        )}
       </div>
 
       <div className="card">

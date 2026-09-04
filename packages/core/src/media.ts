@@ -237,3 +237,97 @@ export async function processInboundMedia(
     transcribed: false,
   };
 }
+
+// ─── Affichage back-office (§1) ───────────────────────────────────────────────
+
+type DisplayMediaKind = "image" | "sticker" | "audio" | "video" | "document" | "inconnu";
+
+/** Mention discrète affichée quand le média n'a pas pu être archivé. */
+const NOT_RETRIEVED_LABEL: Record<DisplayMediaKind, string> = {
+  image: "📷 Photo non récupérée",
+  video: "🎥 Vidéo non récupérée",
+  audio: "🎤 Message vocal non récupéré",
+  document: "📎 Document non récupéré",
+  sticker: "🏷️ Sticker non récupéré",
+  inconnu: "📎 Média non récupéré",
+};
+
+/**
+ * Formes finales produites par `mediaPlaceholder` : légende optionnelle
+ * capturée pour être réaffichée seule (le média est déjà montré au-dessus).
+ */
+const FINAL_PLACEHOLDER_PATTERNS: Array<{ kind: DisplayMediaKind; re: RegExp }> = [
+  {
+    kind: "image",
+    re: /^\[Le client a envoyé une photo(?: — légende : « (.+) »)?\. Tu ne peux pas la voir : demande-lui poliment ce qu'elle représente ou ce qu'il attend\.\]$/,
+  },
+  {
+    kind: "video",
+    re: /^\[Le client a envoyé une vidéo(?: — légende : « (.+) »)?\. Tu ne peux pas la voir : demande-lui poliment de préciser par écrit\.\]$/,
+  },
+  {
+    kind: "document",
+    re: /^\[Le client a envoyé un document(?: — légende : « (.+) »)?\. Tu ne peux pas l'ouvrir : demande-lui poliment de préciser sa demande\.\]$/,
+  },
+  { kind: "sticker", re: /^\[Le client a envoyé un sticker\.\]$/ },
+  {
+    kind: "audio",
+    re: /^\[Le client a envoyé un message vocal que tu ne peux pas écouter : demande-lui poliment de résumer par écrit\.\]$/,
+  },
+  {
+    kind: "inconnu",
+    re: /^\[Le client a envoyé un message de type « .+ » que tu ne peux pas lire — demande-lui poliment de préciser par écrit\.\]$/,
+  },
+];
+
+/**
+ * Textes d'attente écrits par `server.ts` avant le traitement asynchrone du
+ * média (« chargement… ») — y compris ceux qui ne seront jamais remplacés
+ * (traitement interrompu) et restent tels quels dans les anciens messages.
+ */
+const PENDING_PLACEHOLDER_PATTERNS: Array<{ kind: DisplayMediaKind; re: RegExp }> = [
+  { kind: "audio", re: /^\[Message vocal — transcription en cours…\]$/ },
+  { kind: "image", re: /^\[Photo reçue — chargement…\]$/ },
+  { kind: "video", re: /^\[Vidéo reçue — chargement…\]$/ },
+  { kind: "sticker", re: /^\[Sticker reçue — chargement…\]$/ },
+  { kind: "document", re: /^\[Document reçue — chargement…\]$/ },
+];
+
+/** `[Message vocal] <transcription>` → le préfixe est déjà porté par le lecteur audio. */
+const VOICE_TRANSCRIPT_RE = /^\[Message vocal\] ([\s\S]*)$/;
+
+/**
+ * Ce que le back-office doit afficher sous un message média, à la place du
+ * texte brut de `messages.contenu` (destiné au LLM, pas au lecteur humain).
+ * Ne change RIEN à ce qui est stocké en base ni à ce que reçoit le LLM.
+ */
+export function displayMediaText(contenu: string, mediaFile: string, mediaMime: string): string {
+  const voice = contenu.match(VOICE_TRANSCRIPT_RE);
+  if (voice) return (voice[1] ?? "").trim();
+
+  for (const { kind, re } of FINAL_PLACEHOLDER_PATTERNS) {
+    const match = contenu.match(re);
+    if (!match) continue;
+    const caption = match[1]?.trim();
+    if (caption) return caption;
+    if (mediaFile === "") {
+      return kind === "inconnu" ? notRetrievedFromMime(mediaMime) : NOT_RETRIEVED_LABEL[kind];
+    }
+    return "";
+  }
+
+  for (const { kind, re } of PENDING_PLACEHOLDER_PATTERNS) {
+    if (!re.test(contenu)) continue;
+    return mediaFile === "" ? NOT_RETRIEVED_LABEL[kind] : "";
+  }
+
+  return contenu;
+}
+
+/** Repli sur le type MIME quand le type de média n'a pas pu être déterminé depuis le texte. */
+function notRetrievedFromMime(mediaMime: string): string {
+  if (mediaMime.startsWith("image/")) return NOT_RETRIEVED_LABEL.image;
+  if (mediaMime.startsWith("audio/")) return NOT_RETRIEVED_LABEL.audio;
+  if (mediaMime.startsWith("video/")) return NOT_RETRIEVED_LABEL.video;
+  return NOT_RETRIEVED_LABEL.inconnu;
+}

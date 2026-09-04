@@ -1,12 +1,22 @@
 "use server";
 
 import {
+  buildStyleGuide,
+  deterministicRejectReason,
+  deterministicRejectReasonQuestion,
+  DOCUMENT_MAX_ACTIVE,
+  extractClientFacts,
+  extractText,
   formatAlertText,
+  logDecision,
   pollStripePayments,
   summarizeConversation,
   validateE164,
   type AdminNumber,
+  type Core,
 } from "@arbi/core";
+import { mkdir, unlink, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
@@ -18,6 +28,13 @@ import {
   verifyCredentials,
 } from "./auth";
 import { getRuntime } from "./core";
+import {
+  docsDir,
+  generatedDocFilename,
+  mimeFor,
+  sanitizeDocName,
+  validateDocumentUpload,
+} from "./documents";
 import {
   normalizeSiteContent,
   SITE_FIELD_MAX,
@@ -65,26 +82,65 @@ export async function logoutAction(): Promise<void> {
 
 // ── Conversations ──
 
+/** Texte tapé perdu en cas d'échec (§4.3) : réaffiché dans le champ, tronqué. */
+const DRAFT_MAX_CHARS = 2000;
+
+/** Cause + ce qu'il faut faire (§4.4) — remplace l'ancien message générique. */
+function blockedSendMessage(reason: string | undefined): string {
+  switch (reason) {
+    case "outside_24h_window":
+      return "fenêtre de service 24 h fermée : le client doit t'écrire pour la rouvrir, ou utilise un template de relance ci-dessous.";
+    case "opt_out":
+      return "le contact s'est désabonné (STOP) : aucun message ne peut plus lui être envoyé.";
+    default:
+      return `erreur d'envoi (${reason ?? "inconnue"}) — réessaie dans quelques instants.`;
+  }
+}
+
 export async function sendHumanMessageAction(waId: string, formData: FormData): Promise<void> {
   await requireSession();
   const text = String(formData.get("message") ?? "").trim();
   if (!text) return;
-  const { core, wa } = getRuntime();
+  const { core, wa, log } = getRuntime();
   const result = await wa.sendText(waId, text);
   if (result.sent) {
-    core.messages.insert(waId, "human", text);
+    const messageId = core.messages.insert(waId, "human", text);
     core.contacts.setModeHumain(waId, true);
+    captureLearnedExample(core, waId, text, messageId);
     revalidatePath(`/admin/conversations/${waId}`);
-    return;
+    // Redirect explicite (comme deleteHumanMessageAction) : sans lui, l'URL
+    // garde un éventuel ancien `?msg=...&draft=...` d'un échec précédent, et
+    // la bannière ⚠️ « Message NON envoyé » resterait affichée après un envoi
+    // qui vient pourtant de réussir.
+    redirect(`/admin/conversations/${waId}`);
   }
   // Échec (fenêtre 24 h fermée, opt-out…) : ne pas perdre le message en silence.
-  const reason =
-    result.reason === "outside_24h_window"
-      ? "fenêtre de service 24 h fermée — le client doit t'écrire d'abord (ou utiliser un template)"
-      : result.reason === "opt_out"
-        ? "le contact s'est désabonné (STOP)"
-        : `erreur d'envoi (${result.reason ?? "inconnue"})`;
-  redirect(`/admin/conversations/${waId}?msg=${encodeURIComponent(`⚠️ Message NON envoyé : ${reason}`)}`);
+  logDecision(log, "human_send_blocked", { waId, reason: result.reason });
+  const draft = encodeURIComponent(text.slice(0, DRAFT_MAX_CHARS));
+  const msg = encodeURIComponent(`⚠️ Message NON envoyé : ${blockedSendMessage(result.reason)}`);
+  redirect(`/admin/conversations/${waId}?msg=${msg}&draft=${draft}`);
+}
+
+/**
+ * Capture d'un exemple appris (§6) depuis un envoi manuel réussi : les 3
+ * derniers messages `user` avant la réponse, concaténés. N'insère rien si la
+ * conversation n'a aucun message client avant (repo.capture le garantit déjà
+ * via question.trim() === "", mais on évite ici l'appel superflu).
+ */
+function captureLearnedExample(
+  core: Core,
+  waId: string,
+  reponse: string,
+  messageId: number,
+): void {
+  const before = core.messages
+    .history(waId, 50)
+    .filter((m) => m.role === "user")
+    .slice(-3)
+    .map((m) => m.contenu.trim())
+    .filter(Boolean);
+  if (before.length === 0) return;
+  core.examples.capture({ waId, question: before.join(" / "), reponse, messageId });
 }
 
 export async function takeOverAction(waId: string): Promise<void> {
@@ -138,6 +194,93 @@ export async function markAlertTreatedAction(alertId: number, waId: string): Pro
   revalidatePath("/admin");
 }
 
+/**
+ * Relance client hors fenêtre 24 h (§4.5) : seul canal autorisé est un
+ * template approuvé. N'appelle JAMAIS `captureLearnedExample` : un template
+ * figé n'est pas une réponse de Jacob à un message client récent — le
+ * capturer polluerait les exemples appris (risque documenté en revue).
+ */
+export async function sendRelanceTemplateAction(waId: string): Promise<void> {
+  await requireSession();
+  const { core, wa, log } = getRuntime();
+  const templateName = core.settings.get("relance_template_name").trim();
+  if (!templateName) {
+    redirect(
+      `/admin/conversations/${waId}?msg=${encodeURIComponent("⚠️ Aucun template de relance configuré — Réglages → Templates WhatsApp.")}`,
+    );
+  }
+  const contact = core.contacts.get(waId);
+  const lang = contact?.langue || "fr";
+  const result = await wa.sendTemplate(waId, templateName, lang);
+  if (result.sent) {
+    core.messages.insert(waId, "human", `[Template de relance envoyé : ${templateName}]`);
+    logDecision(log, "relance_template_sent", { waId, templateName, lang });
+    revalidatePath(`/admin/conversations/${waId}`);
+    redirect(`/admin/conversations/${waId}?msg=${encodeURIComponent(`✅ Template « ${templateName} » envoyé.`)}`);
+  }
+  logDecision(log, "relance_template_failed", { waId, templateName, reason: result.reason });
+  redirect(
+    `/admin/conversations/${waId}?msg=${encodeURIComponent(`⚠️ Échec de l'envoi du template : ${result.reason ?? "inconnu"}.`)}`,
+  );
+}
+
+// ── Mémoire client (§5) ──
+
+const FACT_MAX_CHARS = 300;
+
+export async function addFactAction(waId: string, formData: FormData): Promise<void> {
+  await requireSession();
+  const fait = String(formData.get("fait") ?? "").trim().slice(0, FACT_MAX_CHARS);
+  if (!fait) return;
+  getRuntime().core.facts.add(waId, fait, "jacob");
+  revalidatePath(`/admin/conversations/${waId}`);
+}
+
+export async function removeFactAction(id: number, waId: string): Promise<void> {
+  await requireSession();
+  getRuntime().core.facts.remove(id);
+  revalidatePath(`/admin/conversations/${waId}`);
+}
+
+export async function toggleFactAction(id: number, waId: string): Promise<void> {
+  await requireSession();
+  getRuntime().core.facts.toggle(id);
+  revalidatePath(`/admin/conversations/${waId}`);
+}
+
+/**
+ * Régénère les faits de source `auto` depuis l'historique complet — pas les
+ * faits `jacob`/`bot`, jamais touchés par `replaceAuto`. `existingFacts` ne
+ * contient QUE les faits non-`auto` : l'extraction repart de zéro sur la
+ * partie automatique (c'est le sens de « régénérer »), pas en incrémental.
+ */
+export async function regenerateFactsAction(waId: string): Promise<void> {
+  await requireSession();
+  const { core, llm, model, log } = getRuntime();
+  const transcript = core.messages
+    .history(waId, 60)
+    .map((m) => `${m.role === "user" ? "Client" : m.role === "human" ? "Jacob" : "Bot"} : ${m.contenu}`)
+    .join("\n");
+  const existingFacts = core.facts
+    .actifs(waId)
+    .filter((f) => f.source !== "auto")
+    .map((f) => f.fait);
+  const faits = await extractClientFacts(llm, model, transcript, existingFacts, log);
+  core.facts.replaceAuto(waId, faits);
+  revalidatePath(`/admin/conversations/${waId}`);
+}
+
+// ── Suppression d'un message manuel (§7) ──
+
+export async function deleteHumanMessageAction(messageId: number, waId: string): Promise<void> {
+  await requireSession();
+  const { core } = getRuntime();
+  const deleted = core.messages.deleteHuman(messageId);
+  if (deleted) core.examples.removeByMessageId(messageId);
+  revalidatePath(`/admin/conversations/${waId}`);
+  redirect(`/admin/conversations/${waId}`);
+}
+
 // ── Leads ──
 
 export async function setLeadStatusAction(leadId: number, formData: FormData): Promise<void> {
@@ -171,6 +314,92 @@ export async function saveCatalogueAction(formData: FormData): Promise<void> {
   const note = String(formData.get("note") ?? "édition dashboard").trim() || "édition dashboard";
   if (!contenu.trim()) return;
   getRuntime().core.catalogue.save(contenu, note);
+  revalidatePath("/admin/catalogue");
+}
+
+// ── Documents de référence pour le prompt (§3) ──
+
+const DOCUMENT_NOTE_MAX_CHARS = 500;
+
+function catalogueRedirect(message: string): never {
+  redirect(`/admin/catalogue?msg=${encodeURIComponent(message)}`);
+}
+
+export async function uploadDocumentAction(formData: FormData): Promise<void> {
+  await requireSession();
+  const { core, log } = getRuntime();
+  const file = formData.get("fichier");
+  const note = String(formData.get("note") ?? "").trim().slice(0, DOCUMENT_NOTE_MAX_CHARS);
+  if (!(file instanceof File)) {
+    catalogueRedirect("⚠️ Aucun fichier sélectionné.");
+  }
+  const activeCount = core.documents.actifs().length;
+  const validation = validateDocumentUpload({ name: file.name, size: file.size, type: file.type }, activeCount);
+  if (!validation.ok) {
+    catalogueRedirect(`⚠️ ${validation.message}`);
+  }
+
+  const buffer = Buffer.from(await file.arrayBuffer());
+  const mime = mimeFor(file.name, file.type);
+  const generated = generatedDocFilename(validation.ext);
+  const dir = docsDir();
+  try {
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, generated), buffer);
+  } catch (err) {
+    log.error({ err: String(err) }, "document_write_failed");
+    catalogueRedirect("⚠️ Impossible d'enregistrer le fichier sur le serveur. Réessaie.");
+  }
+
+  const { text, reason } = await extractText(buffer, mime, file.name);
+  const row = core.documents.create({
+    nom: sanitizeDocName(file.name),
+    fichier: generated,
+    mime,
+    taille: buffer.byteLength,
+    contenu: text,
+    extractionReason: reason ?? "",
+    note,
+  });
+  revalidatePath("/admin/catalogue");
+  const extractMsg = reason ? ` (⚠️ ${reason})` : "";
+  catalogueRedirect(`✅ Document « ${row.nom} » ajouté${extractMsg}.`);
+}
+
+export async function toggleDocumentAction(id: number): Promise<void> {
+  await requireSession();
+  const { core } = getRuntime();
+  const row = core.documents.get(id);
+  if (!row) return;
+  // Réactivation (0 → 1) : revérifier le quota, sinon un cycle désactiver /
+  // en uploader un nouveau / réactiver l'ancien dépasse silencieusement les
+  // DOCUMENT_MAX_ACTIVE documents actifs (validateDocumentUpload ne protège
+  // que l'upload, pas la bascule actif/inactif).
+  if (!row.actif && core.documents.actifs().length >= DOCUMENT_MAX_ACTIVE) {
+    catalogueRedirect(
+      `⚠️ Impossible d'activer « ${row.nom} » : ${DOCUMENT_MAX_ACTIVE} documents actifs maximum. Désactive-en un autre d'abord.`,
+    );
+  }
+  core.documents.update(id, { actif: row.actif ? 0 : 1 });
+  revalidatePath("/admin/catalogue");
+}
+
+/**
+ * Ordre imposé (décision d'architecture) : la ligne DB (source de vérité) est
+ * supprimée D'ABORD, puis le fichier disque est retiré en best-effort — pour
+ * ne jamais laisser une ligne pointant vers un fichier déjà supprimé.
+ */
+export async function deleteDocumentAction(id: number): Promise<void> {
+  await requireSession();
+  const { core, log } = getRuntime();
+  const row = core.documents.get(id);
+  if (!row) return;
+  core.documents.remove(id);
+  try {
+    await unlink(join(docsDir(), row.fichier));
+  } catch (err) {
+    log.error({ err: String(err), fichier: row.fichier }, "document_unlink_failed");
+  }
   revalidatePath("/admin/catalogue");
 }
 
@@ -335,6 +564,26 @@ export async function saveGeneralSettingsAction(formData: FormData): Promise<voi
   const niveau4 = String(formData.get("niveau4_message") ?? "").trim();
   if (niveau4) core.settings.set("niveau4_message", niveau4);
   revalidatePath("/admin/reglages");
+}
+
+/** Code langue Meta (ex. "fr", "en_US") — un préfixe ISO 639-1, un pays optionnel. */
+const LANG_CODE_RE = /^[a-z]{2,3}(_[A-Za-z0-9]{2,5})?$/;
+const TEMPLATE_NAME_MAX_CHARS = 128;
+
+export async function saveTemplateSettingsAction(formData: FormData): Promise<void> {
+  await requireSession();
+  const { core } = getRuntime();
+  const alertName = String(formData.get("alert_template_name") ?? "").trim().slice(0, TEMPLATE_NAME_MAX_CHARS);
+  core.settings.set("alert_template_name", alertName);
+
+  const alertLang = String(formData.get("alert_template_lang") ?? "").trim();
+  if (LANG_CODE_RE.test(alertLang)) core.settings.set("alert_template_lang", alertLang);
+
+  // Vide = pas de template de relance : le bouton disparaît de la page conversation.
+  const relance = String(formData.get("relance_template_name") ?? "").trim().slice(0, TEMPLATE_NAME_MAX_CHARS);
+  core.settings.set("relance_template_name", relance);
+  revalidatePath("/admin/reglages");
+  revalidatePath("/admin/conversations");
 }
 
 export async function toggleBotAction(): Promise<void> {
@@ -716,6 +965,102 @@ export async function resetSiteContentAction(): Promise<void> {
   getRuntime().core.settings.set("site_content", {});
   revalidateSite();
   siteRedirect("✅ Textes du site réinitialisés aux valeurs par défaut.");
+}
+
+// ── Apprentissage : exemples appris & guide de style (§6) ──
+
+const EXAMPLE_FIELD_MAX_CHARS = 600;
+const EXAMPLE_MOTIF_MAX_CHARS = 300;
+const STYLE_GUIDE_MAX_CHARS = 4000;
+
+function apprentissageRedirect(message: string): never {
+  redirect(`/admin/apprentissage?msg=${encodeURIComponent(message)}`);
+}
+
+/**
+ * Filtre déterministe « non négociable » (§6) rappliqué à la LIGNE COURANTE en
+ * base, jamais au seul contenu du formulaire qui vient d'être soumis : c'est
+ * ce qui empêche une activation manuelle de contourner `reviewExample` (le
+ * risque le plus sérieux de l'apprentissage — cf. deterministicRejectReason).
+ * Renvoie le motif de rejet, ou `null` si la ligne est saine.
+ */
+function exampleLeakReason(question: string, reponse: string): string | null {
+  return deterministicRejectReason(reponse) ?? deterministicRejectReasonQuestion(question);
+}
+
+export async function activateExampleAction(id: number): Promise<void> {
+  await requireSession();
+  const { core } = getRuntime();
+  const row = core.examples.get(id);
+  if (!row) return;
+  const leak = exampleLeakReason(row.question, row.reponse);
+  if (leak) {
+    core.examples.setStatut(id, "rejete", leak);
+    revalidatePath("/admin/apprentissage");
+    apprentissageRedirect(`⚠️ Exemple rejeté automatiquement au lieu d'être activé : ${leak}.`);
+  }
+  core.examples.setStatut(id, "actif");
+  revalidatePath("/admin/apprentissage");
+}
+
+export async function rejectExampleAction(id: number, formData: FormData): Promise<void> {
+  await requireSession();
+  const motif =
+    String(formData.get("motif") ?? "").trim().slice(0, EXAMPLE_MOTIF_MAX_CHARS) ||
+    "rejeté manuellement depuis le back-office";
+  getRuntime().core.examples.setStatut(id, "rejete", motif);
+  revalidatePath("/admin/apprentissage");
+}
+
+export async function deleteExampleAction(id: number): Promise<void> {
+  await requireSession();
+  getRuntime().core.examples.remove(id);
+  revalidatePath("/admin/apprentissage");
+}
+
+export async function updateExampleAction(id: number, formData: FormData): Promise<void> {
+  await requireSession();
+  const question = String(formData.get("question") ?? "").trim().slice(0, EXAMPLE_FIELD_MAX_CHARS);
+  const reponse = String(formData.get("reponse") ?? "").trim().slice(0, EXAMPLE_FIELD_MAX_CHARS);
+  const theme = String(formData.get("theme") ?? "").trim().slice(0, 100);
+  if (!question || !reponse) return;
+  // Même filtre qu'à l'activation (§6) : une édition manuelle ne doit jamais
+  // pouvoir réintroduire un montant/paiement/téléphone/e-mail sur une ligne
+  // (y compris déjà `actif`, injectée dans le prompt statique partagé).
+  const leak = exampleLeakReason(question, reponse);
+  if (leak) {
+    apprentissageRedirect(`⚠️ Modification refusée : ${leak}.`);
+  }
+  getRuntime().core.examples.update(id, { question, reponse, theme });
+  revalidatePath("/admin/apprentissage");
+}
+
+export async function saveStyleGuideAction(formData: FormData): Promise<void> {
+  await requireSession();
+  const guide = String(formData.get("style_guide_appris") ?? "").trim().slice(0, STYLE_GUIDE_MAX_CHARS);
+  const { core } = getRuntime();
+  core.settings.set("style_guide_appris", guide);
+  // Le brouillon vient d'être publié (ou remplacé par une édition manuelle) :
+  // on l'efface pour ne pas le représenter comme « en attente » à la prochaine visite.
+  core.settings.set("style_guide_appris_brouillon", "");
+  revalidatePath("/admin/apprentissage");
+}
+
+/**
+ * Génère un brouillon SANS jamais le publier dans le prompt statique partagé :
+ * la source (40 derniers messages `human`, tous contacts confondus) peut
+ * contenir un prénom ou un détail d'un client précis que le LLM recopierait
+ * comme « formule d'ouverture ». Le brouillon attend une relecture explicite
+ * de Jacob (bouton « Enregistrer le guide de style ») avant de devenir actif.
+ * Ne touche pas au brouillon si le résultat est vide (échec LLM ou aucun message).
+ */
+export async function regenerateStyleGuideAction(): Promise<void> {
+  await requireSession();
+  const { core, llm, model, log } = getRuntime();
+  const messages = core.messages.lastHumanMessages(40).map((m) => m.contenu);
+  const guide = await buildStyleGuide(llm, model, messages, log);
+  if (guide.trim()) core.settings.set("style_guide_appris_brouillon", guide);
+  revalidatePath("/admin/apprentissage");
 }
 
 // ── Facturation ──

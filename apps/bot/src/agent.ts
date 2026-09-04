@@ -7,6 +7,7 @@ import {
   logDecision,
   registerMarkers,
   triggerAlert,
+  PAYMENT_OUTBOUND_RE,
   type AlertDeps,
   type ConversationStateData,
   type Core,
@@ -22,28 +23,11 @@ interface HistoryRow {
   contenu: string;
 }
 
-/**
- * Filet déterministe anti-encaissement : aucune coordonnée ou lien de paiement
- * ne doit JAMAIS partir vers un client, même si le modèle en hallucine un.
- * Ancré sur domaines/formats pour éviter les faux positifs (le mot « Stripe »
- * seul est légitime dans le périmètre des offres).
- */
-export const PAYMENT_OUTBOUND_RE = new RegExp(
-  [
-    String.raw`paypal\.(me|com)`,
-    String.raw`(checkout|buy|pay|donate)\.stripe\.com`,
-    String.raw`lydia-app\.com`,
-    String.raw`revolut\.me`,
-    String.raw`sumup\.`,
-    String.raw`paylib`,
-    String.raw`\bIBAN\b`,
-    String.raw`\bRIB\b`,
-    String.raw`\bFR\d{2}(?:\s?\d{4}){5}(?:\s?\d{1,3})?\b`, // IBAN FR
-    String.raw`\b(?:bc1|[13])[a-km-zA-HJ-NP-Z1-9]{25,39}\b`, // BTC
-    String.raw`\b0x[a-fA-F0-9]{40}\b`, // ETH/EVM
-  ].join("|"),
-  "i",
-);
+// Filet déterministe anti-encaissement : déplacé dans @arbi/core (packages/core/src/pricing.ts)
+// pour que packages/core/src/learning.ts puisse aussi s'en servir (rejet des
+// exemples appris) sans dépendance circulaire vers apps/bot. Ré-exporté ici
+// pour ne rien casser côté appelants existants de ce module.
+export { PAYMENT_OUTBOUND_RE };
 
 /** Qualificatifs acceptés autour d'un prix « dès » (jamais présenté comme final). */
 const FROM_QUALIFIER_RE =
@@ -113,17 +97,36 @@ export class SalesAgent {
     this.refreshKnowledge();
   }
 
-  /** Recharge prompt statique + montants autorisés si catalogue/tarifs ont changé. */
+  /** Recharge prompt statique + montants autorisés si catalogue/tarifs/documents/exemples/guide de style ont changé. */
   private refreshKnowledge(): void {
     const { core } = this.deps;
     const pricingStampRow = core.sqlite
       .prepare(`SELECT COUNT(*) AS n, COALESCE(MAX(updated_at), 0) AS m FROM pricing`)
       .get() as { n: number; m: number };
-    const stamp = `${core.catalogue.currentVersionId()}:${pricingStampRow.n}:${pricingStampRow.m}`;
+    // Un document désactivé ou un exemple encore en_attente ne compte pas dans
+    // ces stamps (documents.stamp()/examples.stamp() ne portent que sur les
+    // lignes réellement injectées) : pas de réécriture de cache pour rien.
+    const docStamp = core.documents.stamp();
+    const exStamp = core.examples.stamp();
+    const styleGuideRow = core.sqlite
+      .prepare(`SELECT updated_at AS m FROM settings WHERE key = 'style_guide_appris'`)
+      .get() as { m: number } | undefined;
+    const stamp =
+      `${core.catalogue.currentVersionId()}:${pricingStampRow.n}:${pricingStampRow.m}` +
+      `:${docStamp.n}:${docStamp.m}:${exStamp.n}:${exStamp.m}:${styleGuideRow?.m ?? 0}`;
     if (stamp === this.versionStamp) return;
     const catalogue = core.catalogue.current().contenu;
     const rows = core.pricing.active();
-    this.staticPrompt = buildStaticPrompt(catalogue, rows);
+    this.staticPrompt = buildStaticPrompt(
+      catalogue,
+      rows,
+      core.documents.actifs(),
+      core.examples.actifs(12),
+      core.settings.get("style_guide_appris"),
+    );
+    // INVARIANT §0.1 : allowedAmounts ne prend QUE pricing + catalogue — jamais
+    // les documents/exemples appris, qui n'élargissent JAMAIS les montants
+    // autorisés en sortie (garde-fou vérifié par test dédié).
     this.allowed = allowedAmounts(rows, catalogue);
 
     // Montants qui n'existent QUE comme prix de départ (FROM) : ils devront
@@ -271,10 +274,15 @@ export class SalesAgent {
       lastClientMessage: analysis.combinedText.slice(0, 300),
     };
 
+    // Mémoire client (§5) : 10 faits les plus récents (facts.actifs trie id
+    // DESC) — jamais mis en cache (dynamicContext n'a pas de cache_control),
+    // donc facturés à plein tarif à CHAQUE message ; 10 plutôt que les 20
+    // stockables pour limiter ce coût récurrent.
     const dynamicContext = buildDynamicContext(
       state,
       core.settings.get("group_link"),
       core.settings.get("telegram_contact"),
+      core.facts.actifs(waId, 10),
     );
     const system: Anthropic.Messages.TextBlockParam[] = [
       { type: "text", text: this.staticPrompt, cache_control: { type: "ephemeral" } },

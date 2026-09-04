@@ -1,5 +1,7 @@
+import type Anthropic from "@anthropic-ai/sdk";
 import {
   billingStatus,
+  extractClientFacts,
   logDecision,
   normalizeText,
   triggerAlert,
@@ -9,9 +11,54 @@ import {
   type WhatsAppClient,
 } from "@arbi/core";
 import type { SalesAgent } from "./agent";
-import { analyzeInbound } from "./brain";
+import { analyzeInbound, type Analysis } from "./brain";
 import { sendNiveau4 } from "./tools";
 import type { InboundItem } from "./queue";
+
+/**
+ * Garde-fou de coût de l'extraction de mémoire client (§5) : au plus un
+ * déclenchement toutes les 10 minutes par contact. Mémoire du process (un
+ * seul processus bot en prod, le dashboard n'appelle jamais cette fonction) :
+ * un redémarrage remet le throttle à zéro, impact négligeable.
+ */
+const FACTS_EXTRACTION_INTERVAL_MS = 10 * 60 * 1000;
+const factsExtractionThrottle = new Map<string, number>();
+
+/**
+ * Tâche de fond, jamais awaited dans le chemin de réponse : extrait des faits
+ * durables de la conversation et les mémorise. Ne se déclenche QUE si la
+ * conversation a progressé (pas un simple échange de politesse) et pas plus
+ * d'une fois toutes les 10 minutes par contact — deux gardes de coût
+ * indépendantes du filtre déterministe déjà présent dans core.facts.add()
+ * (rejette tout fait contenant un montant, même si le LLM désobéit).
+ */
+function scheduleFactsExtraction(
+  core: Core,
+  llm: Anthropic,
+  model: string,
+  log: Logger,
+  waId: string,
+  analysis: Analysis,
+): void {
+  if (!analysis.progressed) return;
+  const lastRun = factsExtractionThrottle.get(waId) ?? 0;
+  const nowTs = Date.now();
+  if (nowTs - lastRun < FACTS_EXTRACTION_INTERVAL_MS) return;
+  factsExtractionThrottle.set(waId, nowTs);
+
+  const transcript = core.messages
+    .history(waId, 20)
+    .map((m) => `${m.role}: ${m.contenu}`)
+    .join("\n");
+  const existingFacts = core.facts.actifs(waId, 20).map((f) => f.fait);
+  void extractClientFacts(llm, model, transcript, existingFacts, log)
+    .then((faits) => {
+      for (const fait of faits) core.facts.add(waId, fait, "auto");
+    })
+    .catch((err) => {
+      log.error({ waId, err: String(err) }, "extract_client_facts_task_failed");
+    });
+}
 
 export const OPTOUT_CONFIRMATION =
   "C'est noté ✅ Tu ne recevras plus de messages de notre part. Écris START si tu changes d'avis.";
@@ -47,6 +94,14 @@ export interface HandlerDeps {
   log: Logger;
   /** Coupure de service si la facturation n'est pas à jour (solde ≤ 0). */
   billingEnforced?: boolean;
+  /**
+   * Client LLM (déjà instrumenté par withUsageMetering) et modèle utilisés
+   * pour l'extraction de mémoire client en tâche de fond (§5). Optionnels
+   * pour ne rien casser côté tests existants qui ne testent pas cette
+   * fonctionnalité : sans eux, l'extraction est simplement désactivée.
+   */
+  llm?: Anthropic;
+  model?: string;
 }
 
 /**
@@ -200,5 +255,10 @@ export function createHandler(deps: HandlerDeps) {
       logDecision(log, "no_reply", { waId, niveau4: result.niveau4Sent, alerte: result.alertFired });
     }
     core.questions.record({ ...questionDraft, repondue: !result.alertFired && !result.niveau4Sent });
+
+    // ── Mémoire client (§5) : tâche de fond, après l'envoi de la réponse ──
+    if (deps.llm && deps.model) {
+      scheduleFactsExtraction(core, deps.llm, deps.model, log, waId, analysis);
+    }
   };
 }

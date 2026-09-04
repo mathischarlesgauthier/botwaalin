@@ -150,7 +150,8 @@ export async function triggerAlert(
       1024 - TEMPLATE_BODY_FIXED - (p1.length + p2.length + p3.length + p5.length + p6.length),
     );
     const p4 = flat(resume, Math.min(550, resumeBudget));
-    const templateResult = await deps.wa.sendTemplate(adminWaId, templateName, "fr", [
+    const templateLang = core.settings.get("alert_template_lang");
+    const templateResult = await deps.wa.sendTemplate(adminWaId, templateName, templateLang, [
       {
         type: "body",
         parameters: [

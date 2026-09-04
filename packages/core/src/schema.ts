@@ -167,3 +167,52 @@ export const synonyms = sqliteTable("synonyms", {
   resolution: text("resolution").notNull(),
   actif: integer("actif").notNull().default(1),
 });
+
+/** Documents de référence uploadés par Jacob (contexte complémentaire du prompt). */
+export const documents = sqliteTable("documents", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  /** Nom d'origine nettoyé (affiché à Jacob). */
+  nom: text("nom").notNull(),
+  /** Nom du fichier sur disque — identifiant généré, jamais celui du client. */
+  fichier: text("fichier").notNull(),
+  mime: text("mime").notNull().default(""),
+  taille: integer("taille").notNull().default(0),
+  /** Texte extrait, "" si l'extraction est impossible (voir extractionReason). */
+  contenu: text("contenu").notNull().default(""),
+  extractionReason: text("extraction_reason").notNull().default(""),
+  /** À quoi il sert, saisi par Jacob. */
+  note: text("note").notNull().default(""),
+  actif: integer("actif").notNull().default(1),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});
+
+/** Mémoire durable par client, au-delà de l'état de conversation courant. */
+export const clientFacts = sqliteTable("client_facts", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  waId: text("wa_id").notNull(),
+  fait: text("fait").notNull(),
+  /** bot (outil pendant la conversation) | jacob (ajout manuel) | auto (extraction en tâche de fond). */
+  source: text("source").notNull().default("bot"),
+  actif: integer("actif").notNull().default(1),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});
+
+/** Exemples de réponses de Jacob appris depuis l'envoi manuel (mode reprise). */
+export const learnedExamples = sqliteTable("learned_examples", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  waId: text("wa_id").notNull(),
+  question: text("question").notNull().default(""),
+  reponse: text("reponse").notNull().default(""),
+  theme: text("theme").notNull().default(""),
+  /** en_attente | actif | rejete */
+  statut: text("statut").notNull().default("en_attente"),
+  motifRejet: text("motif_rejet").notNull().default(""),
+  /** Message `human` d'origine (pour la suppression en cascade). Pas de FK stricte (style du projet). */
+  messageId: integer("message_id"),
+  /** Échecs techniques de `reviewExample` (retry FIFO du timer) — voir `examples.recordFailedAttempt`. */
+  attempts: integer("attempts").notNull().default(0),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});

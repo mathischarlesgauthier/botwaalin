@@ -122,6 +122,7 @@ export function makeAnalysis(overrides: Partial<Analysis> = {}): Analysis {
     route: "agent",
     motif: "",
     combinedText: "message de test",
+    progressed: false,
     ...overrides,
   };
 }

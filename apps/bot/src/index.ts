@@ -10,6 +10,7 @@ import {
   processInboundMedia,
   pushApiInvoiceItems,
   recordUsage,
+  reviewExample,
   WhatsAppClient,
   withUsageMetering,
   type AlertDeps,
@@ -88,7 +89,16 @@ async function main(): Promise<void> {
     log,
   });
 
-  const handler = createHandler({ core, wa, agent, alertDeps, log, billingEnforced });
+  const handler = createHandler({
+    core,
+    wa,
+    agent,
+    alertDeps,
+    log,
+    billingEnforced,
+    llm,
+    model: config.ANTHROPIC_MODEL,
+  });
   const queue = new DebounceQueue(config.DEBOUNCE_MS, handler, (err, waId) => {
     log.error({ waId, err: String(err) }, "batch_processing_error");
   });
@@ -150,6 +160,36 @@ async function main(): Promise<void> {
       log.error({ err: String(err) }, "monthly_debit_failed");
     }
   }, 60 * 60 * 1000);
+  // Auto-amélioration (§6) : revue des exemples appris en_attente, au plus 10
+  // par passe, FIFO (les plus anciens d'abord — évite qu'un exemple récent ne
+  // double un ancien indéfiniment). Un échec technique (exception LLM) laisse
+  // la ligne en_attente pour retry à la passe suivante, jamais un rejet
+  // silencieux (voir packages/core/src/learning.ts:reviewExample).
+  const learningTimer = setInterval(() => {
+    void (async () => {
+      const pending = core.examples.list("en_attente", { limit: 10, order: "asc" });
+      if (pending.length === 0) return;
+      const pricingLabels = core.pricing.active().map((row) => row.label);
+      for (const example of pending) {
+        try {
+          const result = await reviewExample(llm, config.ANTHROPIC_MODEL, example, pricingLabels, log);
+          core.examples.update(example.id, {
+            question: result.question,
+            reponse: result.reponse,
+            theme: result.theme,
+          });
+          core.examples.setStatut(example.id, result.garder ? "actif" : "rejete", result.motif);
+        } catch (err) {
+          log.error({ id: example.id, err: String(err) }, "review_example_failed");
+          // Plafond de tentatives (§6) : au-delà, la ligne est rejetée
+          // automatiquement plutôt que de rester en_attente et de bloquer la
+          // file FIFO (10 places) pour tout nouvel exemple valide.
+          core.examples.recordFailedAttempt(example.id);
+        }
+      }
+    })();
+  }, 15 * 60 * 1000);
+
   let stripeTimer: NodeJS.Timeout | undefined;
   if (config.STRIPE_SECRET_KEY) {
     const key = config.STRIPE_SECRET_KEY;
@@ -176,6 +216,7 @@ async function main(): Promise<void> {
     log.info({ signal }, "Arrêt en cours");
     clearInterval(releaseTimer);
     clearInterval(billingTimer);
+    clearInterval(learningTimer);
     if (stripeTimer) clearInterval(stripeTimer);
     await app.close();
     core.close();

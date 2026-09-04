@@ -1,10 +1,13 @@
 export * from "./alerts";
 export * from "./billing";
 export * from "./db";
+export * from "./documents";
 export * from "./intents";
+export * from "./learning";
 export * from "./llm";
 export * from "./logger";
 export * from "./media";
+export * from "./memory";
 export * from "./pricing";
 export { OBJECTIONS_SEED, PRICING_SEED, SYNONYMS_SEED, type PriceType, type PricingSeed } from "./pricing-data";
 export * from "./style";

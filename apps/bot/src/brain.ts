@@ -18,6 +18,13 @@ export interface Analysis {
   route: Route;
   motif: string;
   combinedText: string;
+  /**
+   * La conversation a apporté une info nouvelle (service, budget, délai,
+   * besoin, sous-catégorie…) sur CET échange. Sert de garde-fou de coût à
+   * l'extraction de mémoire client (§5, apps/bot/src/handler.ts) : un simple
+   * échange de politesse ne doit pas déclencher d'appel LLM supplémentaire.
+   */
+  progressed: boolean;
 }
 
 const BUDGET_RE = /(?:budget|autour de|environ|max|maximum|jusqu'?a)\s*(?:de\s*)?(\d[\d\s]{0,8})\s*(?:€|euros?)/iu;
@@ -113,5 +120,5 @@ export function analyzeInbound(
     motif = `${alertThreshold} échanges sans progression`;
   }
 
-  return { intent, serviceKey: state.serviceEnCours, categorie, route, motif, combinedText };
+  return { intent, serviceKey: state.serviceEnCours, categorie, route, motif, combinedText, progressed };
 }

@@ -3,26 +3,35 @@ import {
   addAdminNumberAction,
   removeAdminNumberAction,
   saveGeneralSettingsAction,
+  saveTemplateSettingsAction,
   testAdminNumberAction,
   toggleAdminNumberAction,
   toggleBotAction,
 } from "@/lib/actions";
 import { requireSession } from "@/lib/auth";
 import { getRuntime } from "@/lib/core";
+import { checkWhatsAppTemplates, templateLanguageWarning } from "@/lib/templates";
 
 export const dynamic = "force-dynamic";
 
 export default async function ReglagesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ msg?: string }>;
+  searchParams: Promise<{ msg?: string; check?: string }>;
 }) {
   await requireSession();
-  const { msg } = await searchParams;
+  const { msg, check } = await searchParams;
   const { core } = getRuntime();
   const adminNumbers = core.settings.get("admin_numbers") as AdminNumber[];
   const history = core.settings.history("admin_numbers", 10);
   const botActif = core.settings.get("bot_actif");
+  const alertTemplateName = core.settings.get("alert_template_name");
+  const alertTemplateLang = core.settings.get("alert_template_lang");
+  const relanceTemplateName = core.settings.get("relance_template_name");
+  const templateCheck = check === "1" ? await checkWhatsAppTemplates() : null;
+  const alertWarning = templateCheck?.ok
+    ? templateLanguageWarning(templateCheck.templates, alertTemplateName, alertTemplateLang)
+    : null;
 
   return (
     <div className="space-y-6">
@@ -111,6 +120,101 @@ export default async function ReglagesPage({
               ))}
             </ul>
           </details>
+        )}
+      </div>
+
+      <div className="card space-y-3">
+        <h2 className="font-semibold">Templates WhatsApp</h2>
+        <p className="text-sm text-neutral-500">
+          Hors fenêtre de service 24 h (§4), seul un template approuvé par Meta peut atteindre un
+          client. Ces réglages pilotent les alertes admin et la relance client.
+        </p>
+        <form action={saveTemplateSettingsAction} className="grid gap-3 md:grid-cols-3">
+          <div>
+            <label className="label">Template d&apos;alerte admin</label>
+            <input
+              name="alert_template_name"
+              defaultValue={alertTemplateName}
+              className="input"
+              placeholder="alerte_admin"
+            />
+          </div>
+          <div>
+            <label className="label">Langue du template d&apos;alerte</label>
+            <input
+              name="alert_template_lang"
+              defaultValue={alertTemplateLang}
+              className="input"
+              placeholder="fr"
+            />
+          </div>
+          <div>
+            <label className="label">Template de relance client (hors fenêtre 24 h)</label>
+            <input
+              name="relance_template_name"
+              defaultValue={relanceTemplateName}
+              className="input"
+              placeholder="vide = bouton de relance absent"
+            />
+          </div>
+          <div className="md:col-span-3">
+            <button className="btn btn-primary" type="submit">
+              💾 Enregistrer les templates
+            </button>
+          </div>
+        </form>
+
+        <form action="/admin/reglages" className="flex items-center gap-2 border-t border-neutral-100 pt-3">
+          <input type="hidden" name="check" value="1" />
+          <button className="btn btn-secondary" type="submit">
+            🔍 Vérifier mes templates WhatsApp
+          </button>
+          {templateCheck && !templateCheck.ok && (
+            <span className="text-sm text-red-600">{templateCheck.error}</span>
+          )}
+        </form>
+
+        {templateCheck?.ok && (
+          <div className="space-y-2">
+            {alertWarning && (
+              <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                {alertWarning}
+              </div>
+            )}
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-100 text-sm">
+                <thead className="text-left text-xs uppercase text-neutral-400">
+                  <tr>
+                    <th className="py-1 pr-4 font-medium">Nom</th>
+                    <th className="py-1 pr-4 font-medium">Langue</th>
+                    <th className="py-1 font-medium">Statut</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {templateCheck.templates.map((t, i) => (
+                    <tr key={`${t.name}-${t.language}-${i}`} className="border-t border-neutral-100">
+                      <td className="py-1 pr-4 font-mono">{t.name}</td>
+                      <td className="py-1 pr-4">{t.language}</td>
+                      <td className="py-1">
+                        <span
+                          className={`badge ${t.status === "APPROVED" ? "badge-bot" : "badge-neutre"}`}
+                        >
+                          {t.status}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                  {templateCheck.templates.length === 0 && (
+                    <tr>
+                      <td colSpan={3} className="py-4 text-center text-neutral-400">
+                        Aucun template trouvé pour ce compte WhatsApp Business.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
         )}
       </div>
 

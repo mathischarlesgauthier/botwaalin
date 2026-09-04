@@ -186,6 +186,48 @@ CREATE TABLE IF NOT EXISTS llm_usage (
   created_at      INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_llm_usage_date ON llm_usage (created_at);
+
+CREATE TABLE IF NOT EXISTS documents (
+  id                INTEGER PRIMARY KEY AUTOINCREMENT,
+  nom               TEXT NOT NULL,
+  fichier           TEXT NOT NULL,
+  mime              TEXT NOT NULL DEFAULT '',
+  taille            INTEGER NOT NULL DEFAULT 0,
+  contenu           TEXT NOT NULL DEFAULT '',
+  extraction_reason TEXT NOT NULL DEFAULT '',
+  note              TEXT NOT NULL DEFAULT '',
+  actif             INTEGER NOT NULL DEFAULT 1,
+  created_at        INTEGER NOT NULL,
+  updated_at        INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_documents_actif ON documents (actif, id);
+
+CREATE TABLE IF NOT EXISTS client_facts (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  wa_id      TEXT NOT NULL,
+  fait       TEXT NOT NULL,
+  source     TEXT NOT NULL DEFAULT 'bot',
+  actif      INTEGER NOT NULL DEFAULT 1,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_client_facts_wa ON client_facts (wa_id, actif, id);
+
+CREATE TABLE IF NOT EXISTS learned_examples (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  wa_id       TEXT NOT NULL,
+  question    TEXT NOT NULL DEFAULT '',
+  reponse     TEXT NOT NULL DEFAULT '',
+  theme       TEXT NOT NULL DEFAULT '',
+  statut      TEXT NOT NULL DEFAULT 'en_attente',
+  motif_rejet TEXT NOT NULL DEFAULT '',
+  message_id  INTEGER,
+  attempts    INTEGER NOT NULL DEFAULT 0,
+  created_at  INTEGER NOT NULL,
+  updated_at  INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_learned_examples_statut ON learned_examples (statut, id);
+CREATE INDEX IF NOT EXISTS idx_learned_examples_message ON learned_examples (message_id);
 `;
 
 function tableColumns(db: BetterSqlite3.Database, table: string): Set<string> {
@@ -202,6 +244,9 @@ function tableSql(db: BetterSqlite3.Database, table: string): string {
 
 export function migrate(db: BetterSqlite3.Database): void {
   db.pragma("journal_mode = WAL");
+  // Deux process (bot + dashboard) écrivent sur le même fichier : sans ceci,
+  // une collision d'écriture renvoie immédiatement SQLITE_BUSY au lieu d'attendre.
+  db.pragma("busy_timeout = 5000");
   db.exec(CREATE_TABLES);
 
   // v2.1 : résumé de conversation régénérable (dashboard)
@@ -250,6 +295,14 @@ export function migrate(db: BetterSqlite3.Database): void {
     db.exec(`ALTER TABLE messages ADD COLUMN media_type TEXT NOT NULL DEFAULT ''`);
     db.exec(`ALTER TABLE messages ADD COLUMN media_file TEXT NOT NULL DEFAULT ''`);
     db.exec(`ALTER TABLE messages ADD COLUMN media_mime TEXT NOT NULL DEFAULT ''`);
+  }
+
+  // v2.3 : plafond de tentatives sur l'apprentissage (§6) — CREATE_TABLES
+  // ci-dessus couvre les bases neuves ; garde défensive pour une base déjà
+  // créée par une version antérieure de ce fichier sans la colonne.
+  const examplesCols = tableColumns(db, "learned_examples");
+  if (examplesCols.size > 0 && !examplesCols.has("attempts")) {
+    db.exec(`ALTER TABLE learned_examples ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0`);
   }
 
   db.pragma("user_version = 2");

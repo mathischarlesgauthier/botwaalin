@@ -12,6 +12,10 @@ function statusBadge(row: { modeHumain: number; alertesOuvertes: number; optOut:
   return <span className="badge badge-bot">bot</span>;
 }
 
+// Grille commune à l'en-tête et à chaque ligne : mêmes proportions de colonnes
+// (Contact / Dernier message / Service / Statut / Score / Date).
+const ROW_GRID = "md:grid-cols-[1.4fr_2.2fr_0.9fr_0.8fr_0.5fr_0.9fr]";
+
 export default async function ConversationsPage({
   searchParams,
 }: {
@@ -39,7 +43,7 @@ export default async function ConversationsPage({
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-2xl font-bold">Conversations</h1>
-        <form className="flex gap-2" action="/conversations">
+        <form className="flex gap-2" action="/admin/conversations">
           <input
             name="q"
             defaultValue={q}
@@ -58,55 +62,59 @@ export default async function ConversationsPage({
         </form>
       </div>
 
-      <div className="card overflow-x-auto p-0">
-        <table className="w-full min-w-160 text-sm">
-          <thead className="bg-neutral-50 text-left text-xs uppercase text-neutral-400">
-            <tr>
-              <th className="px-4 py-2 font-medium">Contact</th>
-              <th className="px-4 py-2 font-medium">Dernier message</th>
-              <th className="px-4 py-2 font-medium">Service</th>
-              <th className="px-4 py-2 font-medium">Statut</th>
-              <th className="px-4 py-2 font-medium">Score</th>
-              <th className="px-4 py-2 font-medium">Date</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => (
-              <tr key={row.waId} className="border-t border-neutral-100 hover:bg-neutral-50">
-                <td className="px-4 py-2">
-                  <Link href={`/admin/conversations/${row.waId}`} className="font-medium hover:underline">
-                    {row.nom || `+${row.waId}`}
-                  </Link>
+      {/*
+        Remplace le <table> par une liste de <Link> en grid : chaque ligne est
+        entièrement cliquable (un <a> ne peut pas envelopper un <tr>), sans
+        aucun JavaScript. L'apparence tableau est conservée par les mêmes
+        proportions de colonnes sur l'en-tête et les lignes.
+      */}
+      <div className="card overflow-hidden p-0">
+        <div className={`hidden bg-neutral-50 px-4 py-2 text-left text-xs uppercase text-neutral-400 md:grid md:items-center md:gap-4 ${ROW_GRID}`}>
+          <div className="font-medium">Contact</div>
+          <div className="font-medium">Dernier message</div>
+          <div className="font-medium">Service</div>
+          <div className="font-medium">Statut</div>
+          <div className="font-medium">Score</div>
+          <div className="font-medium">Date</div>
+        </div>
+        <div className="divide-y divide-neutral-100">
+          {rows.map((row) => {
+            const label = row.nom || `+${row.waId}`;
+            return (
+              <Link
+                key={row.waId}
+                href={`/admin/conversations/${row.waId}`}
+                aria-label={`Ouvrir la conversation avec ${label}`}
+                className={`grid grid-cols-1 gap-1 px-4 py-3 text-sm outline-none hover:bg-neutral-50 focus-visible:relative focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-neutral-900 md:items-center md:gap-4 ${ROW_GRID}`}
+              >
+                <div>
+                  <div className="font-medium text-neutral-900">{label}</div>
                   <div className="text-xs text-neutral-400">+{row.waId}</div>
-                </td>
-                <td className="max-w-70 truncate px-4 py-2 text-neutral-600">
+                </div>
+                <div className="truncate text-neutral-600">
                   <span className="text-neutral-400">
                     {row.dernierRole === "user" ? "→ " : "← "}
                   </span>
                   {row.dernierMessage}
-                </td>
-                <td className="px-4 py-2 text-neutral-600">{row.serviceEnCours ?? "—"}</td>
-                <td className="px-4 py-2">{statusBadge(row)}</td>
-                <td className="px-4 py-2">{row.score ?? "—"}</td>
-                <td className="whitespace-nowrap px-4 py-2 text-neutral-500">
+                </div>
+                <div className="text-neutral-600">{row.serviceEnCours ?? "—"}</div>
+                <div>{statusBadge(row)}</div>
+                <div className="text-neutral-600">{row.score ?? "—"}</div>
+                <div className="whitespace-nowrap text-neutral-500">
                   {new Date(row.dernierTs).toLocaleString("fr-FR", {
                     day: "2-digit",
                     month: "2-digit",
                     hour: "2-digit",
                     minute: "2-digit",
                   })}
-                </td>
-              </tr>
-            ))}
-            {rows.length === 0 && (
-              <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-neutral-400">
-                  Aucune conversation.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+                </div>
+              </Link>
+            );
+          })}
+          {rows.length === 0 && (
+            <div className="px-4 py-8 text-center text-neutral-400">Aucune conversation.</div>
+          )}
+        </div>
       </div>
     </div>
   );
