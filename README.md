@@ -70,6 +70,16 @@ Développement local : `npm install`, `npm test` (60+ tests), `npm run dev:bot`,
 
 Si Meta rejette le template, reformule-le dans WhatsApp Manager → Modèles de message (catégorie *Utility*) en gardant les 6 variables `{{1}}…{{6}}` et le bouton URL ; le nom est configurable en base (`alert_template_name`).
 
+### Répondre à un client hors fenêtre 24 h
+
+Le back-office ne verrouille **jamais** le champ de réponse : Jacob doit toujours pouvoir reprendre la main. Passé 24 h sans message du client, WhatsApp refuse le texte libre — la réponse tapée bascule alors automatiquement dans le **template de relance**, dont la variable `{{1}}` porte le texte, qui arrive donc intégralement.
+
+```bash
+./scripts/create-relance-template.sh   # crée `relance_client` ({{1}} = message de Jacob)
+```
+
+Une fois le template APPROVED, renseigne son nom dans **Dashboard → Réglages → Template de relance client**. Sans template configuré (ou sans variable dans son corps), hors fenêtre l'envoi échoue et le brouillon est conservé dans le champ — c'est une règle Meta, pas une limite du code.
+
 ## Procédure Meta Business
 
 1. **Vérification de l'entreprise** : business.facebook.com → Centre de sécurité → Vérification (Kbis, 1-5 j). Sans elle : 250 conversations/jour max.
