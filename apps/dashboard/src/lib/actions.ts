@@ -7,6 +7,7 @@ import {
   DOCUMENT_MAX_ACTIVE,
   extractClientFacts,
   extractText,
+  flattenTemplateParam,
   formatAlertText,
   logDecision,
   pollStripePayments,
@@ -89,7 +90,7 @@ const DRAFT_MAX_CHARS = 2000;
 function blockedSendMessage(reason: string | undefined): string {
   switch (reason) {
     case "outside_24h_window":
-      return "fenêtre de service 24 h fermée : le client doit t'écrire pour la rouvrir, ou utilise un template de relance ci-dessous.";
+      return "WhatsApp a refusé le texte libre (plus de 24 h depuis le dernier message du client) et aucun template de relance n'est configuré pour prendre le relais — ajoute-en un dans Réglages → Templates WhatsApp.";
     case "opt_out":
       return "le contact s'est désabonné (STOP) : aucun message ne peut plus lui être envoyé.";
     default:
@@ -97,16 +98,74 @@ function blockedSendMessage(reason: string | undefined): string {
   }
 }
 
+/**
+ * Longueur max du texte injecté dans la variable du template : Meta rejette un
+ * corps HYDRATÉ de plus de 1024 caractères (erreur 132018) — on laisse de la
+ * marge pour le texte fixe du template autour de la variable.
+ */
+const TEMPLATE_PARAM_MAX = 800;
+
+type RelanceOutcome =
+  /** Le texte de Jacob est parti tel quel, porté par la variable du template. */
+  | { status: "sent_with_text" }
+  /** Le template est parti, mais sans le texte (template sans variable). */
+  | { status: "sent_template_only" }
+  /** Aucun template de relance configuré dans Réglages. */
+  | { status: "unavailable" }
+  | { status: "failed"; reason?: string };
+
+/**
+ * Repli hors fenêtre 24 h : WhatsApp n'accepte plus qu'un template approuvé.
+ * Si ce template porte une variable, le message de Jacob passe dedans et
+ * arrive intégralement ; sinon on envoie au moins la relance, qui fait
+ * réécrire le client et rouvre la fenêtre.
+ */
+async function sendViaRelanceTemplate(
+  core: Core,
+  wa: ReturnType<typeof getRuntime>["wa"],
+  waId: string,
+  text: string,
+): Promise<RelanceOutcome> {
+  const templateName = core.settings.get("relance_template_name").trim();
+  if (!templateName) return { status: "unavailable" };
+  const lang = core.contacts.get(waId)?.langue || "fr";
+
+  const withText = await wa.sendTemplate(waId, templateName, lang, [
+    {
+      type: "body",
+      parameters: [{ type: "text", text: flattenTemplateParam(text, TEMPLATE_PARAM_MAX) }],
+    },
+  ]);
+  if (withText.sent) return { status: "sent_with_text" };
+
+  // Nombre de paramètres refusé (132000) parce que le template n'a pas de
+  // variable : on retente la relance nue.
+  const plain = await wa.sendTemplate(waId, templateName, lang);
+  if (plain.sent) return { status: "sent_template_only" };
+  return { status: "failed", reason: withText.reason ?? plain.reason };
+}
+
+/** Trace commune à tout message effectivement délivré à la main par Jacob. */
+function recordHumanMessage(core: Core, waId: string, text: string): void {
+  const messageId = core.messages.insert(waId, "human", text);
+  core.contacts.setModeHumain(waId, true);
+  captureLearnedExample(core, waId, text, messageId);
+}
+
+/**
+ * Envoi manuel de Jacob. Plus aucun verrou local : il doit toujours pouvoir
+ * reprendre la main. On tente le texte libre, et si Meta le refuse parce que
+ * la fenêtre 24 h est fermée, on bascule automatiquement sur le template de
+ * relance (avec le texte dedans quand le template a une variable).
+ */
 export async function sendHumanMessageAction(waId: string, formData: FormData): Promise<void> {
   await requireSession();
   const text = String(formData.get("message") ?? "").trim();
   if (!text) return;
   const { core, wa, log } = getRuntime();
-  const result = await wa.sendText(waId, text);
+  const result = await wa.sendText(waId, text, { manual: true });
   if (result.sent) {
-    const messageId = core.messages.insert(waId, "human", text);
-    core.contacts.setModeHumain(waId, true);
-    captureLearnedExample(core, waId, text, messageId);
+    recordHumanMessage(core, waId, text);
     revalidatePath(`/admin/conversations/${waId}`);
     // Redirect explicite (comme deleteHumanMessageAction) : sans lui, l'URL
     // garde un éventuel ancien `?msg=...&draft=...` d'un échec précédent, et
@@ -114,8 +173,44 @@ export async function sendHumanMessageAction(waId: string, formData: FormData): 
     // qui vient pourtant de réussir.
     redirect(`/admin/conversations/${waId}`);
   }
-  // Échec (fenêtre 24 h fermée, opt-out…) : ne pas perdre le message en silence.
-  logDecision(log, "human_send_blocked", { waId, reason: result.reason });
+
+  if (result.reason === "outside_24h_window") {
+    const fallback = await sendViaRelanceTemplate(core, wa, waId, text);
+    logDecision(log, "human_send_outside_window", {
+      waId,
+      metaCode: result.metaCode,
+      fallback: fallback.status,
+    });
+    if (fallback.status === "sent_with_text") {
+      recordHumanMessage(core, waId, text);
+      revalidatePath(`/admin/conversations/${waId}`);
+      const msg = encodeURIComponent(
+        "✅ Fenêtre 24 h fermée : ton message est parti via le template de relance.",
+      );
+      redirect(`/admin/conversations/${waId}?msg=${msg}`);
+    }
+    if (fallback.status === "sent_template_only") {
+      core.messages.insert(waId, "human", "[Template de relance envoyé — fenêtre 24 h fermée]");
+      core.contacts.setModeHumain(waId, true);
+      revalidatePath(`/admin/conversations/${waId}`);
+      const msg = encodeURIComponent(
+        "⚠️ Fenêtre 24 h fermée : seule la relance est partie, ton texte n'a pas pu être joint. Ajoute une variable {{1}} au template dans Réglages pour qu'il porte ton message.",
+      );
+      const draft = encodeURIComponent(text.slice(0, DRAFT_MAX_CHARS));
+      redirect(`/admin/conversations/${waId}?msg=${msg}&draft=${draft}`);
+    }
+    if (fallback.status === "failed") {
+      const draft = encodeURIComponent(text.slice(0, DRAFT_MAX_CHARS));
+      const msg = encodeURIComponent(
+        `⚠️ Message NON envoyé : fenêtre 24 h fermée et le template de relance a échoué (${fallback.reason ?? "raison inconnue"}).`,
+      );
+      redirect(`/admin/conversations/${waId}?msg=${msg}&draft=${draft}`);
+    }
+    // `unavailable` : aucun template configuré → message d'aide ci-dessous.
+  }
+
+  // Échec réel : ne pas perdre le message en silence.
+  logDecision(log, "human_send_blocked", { waId, reason: result.reason, metaCode: result.metaCode });
   const draft = encodeURIComponent(text.slice(0, DRAFT_MAX_CHARS));
   const msg = encodeURIComponent(`⚠️ Message NON envoyé : ${blockedSendMessage(result.reason)}`);
   redirect(`/admin/conversations/${waId}?msg=${msg}&draft=${draft}`);

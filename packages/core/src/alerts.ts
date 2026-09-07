@@ -26,7 +26,7 @@ export interface AlertDeps {
 }
 
 /** Une seule ligne : les paramètres de template WhatsApp refusent les sauts de ligne. */
-function flat(text: string, max = 550): string {
+export function flattenTemplateParam(text: string, max = 550): string {
   return text.replace(/\s*\n+\s*/g, " · ").replace(/\s+/g, " ").trim().slice(0, max) || "—";
 }
 
@@ -140,16 +140,16 @@ export async function triggerAlert(
     // Meta rejette un corps HYDRATÉ > 1024 caractères (erreur 132018) : on
     // budgétise le résumé en fonction des autres paramètres + texte fixe.
     const TEMPLATE_BODY_FIXED = 113; // longueur du texte fixe du template alerte_admin
-    const p1 = flat(clientLabel, 80);
-    const p2 = flat(input.categorie, 40);
-    const p3 = flat(input.intention || "—", 40);
-    const p5 = flat(input.motif, 120);
-    const p6 = flat(input.dernierMessage, 200);
+    const p1 = flattenTemplateParam(clientLabel, 80);
+    const p2 = flattenTemplateParam(input.categorie, 40);
+    const p3 = flattenTemplateParam(input.intention || "—", 40);
+    const p5 = flattenTemplateParam(input.motif, 120);
+    const p6 = flattenTemplateParam(input.dernierMessage, 200);
     const resumeBudget = Math.max(
       100,
       1024 - TEMPLATE_BODY_FIXED - (p1.length + p2.length + p3.length + p5.length + p6.length),
     );
-    const p4 = flat(resume, Math.min(550, resumeBudget));
+    const p4 = flattenTemplateParam(resume, Math.min(550, resumeBudget));
     const templateLang = core.settings.get("alert_template_lang");
     const templateResult = await deps.wa.sendTemplate(adminWaId, templateName, templateLang, [
       {

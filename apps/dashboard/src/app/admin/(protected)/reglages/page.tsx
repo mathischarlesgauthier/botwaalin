@@ -154,8 +154,13 @@ export default async function ReglagesPage({
               name="relance_template_name"
               defaultValue={relanceTemplateName}
               className="input"
-              placeholder="vide = bouton de relance absent"
+              placeholder="vide = aucun repli hors fenêtre 24 h"
             />
+            <p className="mt-1 text-xs text-neutral-500">
+              Passé 24 h sans message du client, WhatsApp refuse le texte libre. Avec un template
+              approuvé contenant une variable {"{{1}}"} dans le corps, tes réponses du back-office
+              sont envoyées dedans et arrivent quand même.
+            </p>
           </div>
           <div className="md:col-span-3">
             <button className="btn btn-primary" type="submit">

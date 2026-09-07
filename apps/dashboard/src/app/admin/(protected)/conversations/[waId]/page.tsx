@@ -50,11 +50,14 @@ export default async function ConversationDetailPage({
   const facts = core.facts.list(waId);
 
   // Fenêtre de service WhatsApp 24 h (§4.1) : indicateur permanent, purement
-  // informatif — la seule autorité qui bloque/autorise réellement l'envoi
-  // reste `createGate` côté envoi.
+  // informatif. Elle ne verrouille PLUS le champ de réponse — Jacob doit
+  // toujours pouvoir reprendre la main : hors fenêtre, l'envoi bascule
+  // automatiquement sur le template de relance (cf. sendHumanMessageAction).
   const windowState = serviceWindow(core.messages.lastInboundTs(waId), Date.now());
   const relanceTemplate = core.settings.get("relance_template_name").trim();
-  const sendDisabled = !windowState.open || contact.optOut === 1;
+  // Seul l'opt-out (STOP) bloque encore : écrire à un désabonné met en danger
+  // le numéro WhatsApp, et Meta refuse l'envoi de toute façon.
+  const sendDisabled = contact.optOut === 1;
 
   return (
     <div className="space-y-4">
@@ -276,21 +279,26 @@ export default async function ConversationDetailPage({
               </button>
             </form>
             {/* En dehors du <form> ci-dessus : un <form> ne peut pas en contenir un autre (HTML). */}
-            {sendDisabled && (
+            {contact.optOut === 1 && (
+              <div className="rounded-lg bg-neutral-50 p-2 text-xs text-neutral-600">
+                Le contact s&apos;est désabonné (STOP) : aucun message ne peut lui être envoyé tant
+                qu&apos;il n&apos;a pas réécrit.
+              </div>
+            )}
+            {contact.optOut !== 1 && !windowState.open && (
               <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-neutral-50 p-2 text-xs text-neutral-600">
                 <span>
-                  {contact.optOut === 1
-                    ? "Le contact s'est désabonné (STOP) : aucun message ne peut lui être envoyé."
-                    : "Fenêtre de service 24 h fermée : WhatsApp n'autorise plus que les templates approuvés tant que le client n'a pas réécrit."}
+                  {relanceTemplate
+                    ? `Fenêtre 24 h fermée : ton message part quand même — via le template « ${relanceTemplate} », qui le porte s'il a une variable {{1}}.`
+                    : "Fenêtre 24 h fermée : WhatsApp refusera le texte libre. Configure un template de relance avec une variable {{1}} pour que tes messages passent quand même."}
                 </span>
-                {contact.optOut !== 1 && relanceTemplate && (
+                {relanceTemplate ? (
                   <form action={sendRelanceTemplateAction.bind(null, waId)}>
                     <button className="btn btn-secondary" type="submit">
-                      🔁 Relancer avec le template
+                      🔁 Relancer avec le template seul
                     </button>
                   </form>
-                )}
-                {contact.optOut !== 1 && !relanceTemplate && (
+                ) : (
                   <Link href="/admin/reglages" className="text-neutral-500 underline">
                     Configurer un template de relance dans Réglages →
                   </Link>

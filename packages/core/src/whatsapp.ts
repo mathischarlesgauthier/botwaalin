@@ -52,6 +52,14 @@ export type GateResult = { ok: true } | { ok: false; reason: string };
 export interface OutboundGate {
   canSendFreeForm(waId: string): GateResult;
   canSendTemplate(waId: string): GateResult;
+  /**
+   * Envoi manuel de Jacob depuis le back-office. La fenêtre 24 h n'est PAS un
+   * verrou local ici : Jacob doit toujours pouvoir reprendre la main. Seul
+   * l'opt-out (STOP) reste bloquant — écrire à un contact désabonné met en
+   * danger le numéro WhatsApp. Si la fenêtre est réellement fermée, c'est Meta
+   * qui refuse l'appel, et l'appelant bascule sur un template approuvé.
+   */
+  canSendManual(waId: string): GateResult;
 }
 
 export function createGate(db: GateDb, now: () => number = Date.now): OutboundGate {
@@ -70,13 +78,38 @@ export function createGate(db: GateDb, now: () => number = Date.now): OutboundGa
       if (contact?.optOut) return { ok: false, reason: "opt_out" };
       return { ok: true };
     },
+    canSendManual(waId) {
+      const contact = db.getContact(waId);
+      if (contact?.optOut) return { ok: false, reason: "opt_out" };
+      return { ok: true };
+    },
   };
+}
+
+/**
+ * Codes d'erreur Meta signifiant « fenêtre de service 24 h fermée » (message
+ * de réengagement refusé). Traduits en `outside_24h_window` pour que
+ * l'appelant traite de la même façon un refus local et un refus Meta.
+ */
+const META_OUTSIDE_WINDOW_CODES = new Set([131047, 470]);
+
+/** Code d'erreur Meta d'une réponse d'échec, si le corps est exploitable. */
+function metaErrorCode(body: string): number | undefined {
+  try {
+    const parsed = JSON.parse(body) as { error?: { code?: unknown } };
+    const code = parsed.error?.code;
+    return typeof code === "number" ? code : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 export interface SendResult {
   sent: boolean;
   reason?: string;
   messageId?: string;
+  /** Code d'erreur Meta brut (ex. 131047, 132000) quand l'API a répondu en erreur. */
+  metaCode?: number;
 }
 
 export interface MenuRow {
@@ -127,8 +160,17 @@ export class WhatsAppClient {
     this.fetchFn = opts.fetchFn ?? fetch;
   }
 
-  async sendText(waId: string, text: string): Promise<SendResult> {
-    const gate = this.gate.canSendFreeForm(waId);
+  /**
+   * Texte libre. `manual: true` = envoi déclenché par Jacob depuis le
+   * back-office : le verrou local des 24 h ne s'applique pas (cf.
+   * `canSendManual`), seul l'opt-out bloque encore avant l'appel Meta.
+   */
+  async sendText(
+    waId: string,
+    text: string,
+    opts: { manual?: boolean } = {},
+  ): Promise<SendResult> {
+    const gate = opts.manual ? this.gate.canSendManual(waId) : this.gate.canSendFreeForm(waId);
     if (!gate.ok) {
       logDecision(this.log, "send_blocked", { waId, kind: "text", reason: gate.reason });
       return { sent: false, reason: gate.reason };
@@ -283,11 +325,16 @@ export class WhatsAppClient {
         await sleep(this.backoff(attempt));
         continue;
       }
+      const metaCode = metaErrorCode(errorBody);
       this.log.error(
-        { waId, kind, status: response.status, body: errorBody.slice(0, 500) },
+        { waId, kind, status: response.status, metaCode, body: errorBody.slice(0, 500) },
         "whatsapp_send_failed",
       );
-      return { sent: false, reason: `http_${response.status}` };
+      const reason =
+        metaCode !== undefined && META_OUTSIDE_WINDOW_CODES.has(metaCode)
+          ? "outside_24h_window"
+          : `http_${response.status}`;
+      return { sent: false, reason, ...(metaCode !== undefined ? { metaCode } : {}) };
     }
     return { sent: false, reason: "retries_exhausted" };
   }
