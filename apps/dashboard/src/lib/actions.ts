@@ -2,6 +2,8 @@
 
 import {
   buildStyleGuide,
+  checkOutboundMedia,
+  classifyQuestionTopics,
   deterministicRejectReason,
   deterministicRejectReasonQuestion,
   DOCUMENT_MAX_ACTIVE,
@@ -11,11 +13,13 @@ import {
   formatAlertText,
   logDecision,
   pollStripePayments,
+  safeMediaName,
   summarizeConversation,
   validateE164,
   type AdminNumber,
   type Core,
 } from "@arbi/core";
+import { randomUUID } from "node:crypto";
 import { mkdir, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { revalidatePath } from "next/cache";
@@ -29,6 +33,7 @@ import {
   verifyCredentials,
 } from "./auth";
 import { getRuntime } from "./core";
+import { mediaDir } from "./media";
 import {
   docsDir,
   generatedDocFilename,
@@ -216,6 +221,112 @@ export async function sendHumanMessageAction(waId: string, formData: FormData): 
   redirect(`/admin/conversations/${waId}?msg=${msg}&draft=${draft}`);
 }
 
+/** Légende WhatsApp : 1024 caractères maximum, on coupe avant l'appel. */
+const CAPTION_MAX_CHARS = 1000;
+
+/**
+ * Envoi d'une photo ou d'une vidéo depuis le back-office. Le fichier est
+ * archivé sur le volume (même dossier que les médias reçus, donc visible dans
+ * le fil), déposé chez Meta, puis envoyé. En cas d'échec, le fichier archivé
+ * est supprimé : pas d'orphelin sur le volume.
+ */
+export async function sendHumanMediaAction(waId: string, formData: FormData): Promise<void> {
+  await requireSession();
+  const { core, wa, log } = getRuntime();
+  const file = formData.get("fichier");
+  const legende = String(formData.get("legende") ?? "")
+    .trim()
+    .slice(0, CAPTION_MAX_CHARS);
+
+  if (!(file instanceof File) || file.size === 0) {
+    mediaRedirect(waId, "⚠️ Aucun fichier sélectionné.");
+  }
+  const check = checkOutboundMedia({ name: file.name, size: file.size, type: file.type });
+  if (!check.ok) {
+    mediaRedirect(waId, `⚠️ ${check.message}`);
+  }
+
+  // Type retenu par la validation : celui du navigateur, ou déduit de
+  // l'extension quand il ne l'a pas renseigné.
+  const mime = check.mime;
+  const stored = safeMediaName(randomUUID(), mime);
+  const dir = mediaDir();
+  // Un seul passage en mémoire : le même buffer sert à l'archivage et au
+  // dépôt chez Meta. Le relire du disque ferait une copie de plus (jusqu'à
+  // 16 Mo) et ajouterait un point d'échec hors de tout try.
+  const buffer = Buffer.from(await file.arrayBuffer());
+  try {
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, stored), buffer);
+  } catch (err) {
+    log.error({ err: String(err), waId }, "outbound_media_write_failed");
+    mediaRedirect(waId, "⚠️ Impossible d'enregistrer le fichier sur le serveur.");
+  }
+
+  const cleanup = async (): Promise<void> => {
+    await unlink(join(dir, stored)).catch(() => undefined);
+  };
+
+  const mediaId = await wa.uploadMedia(buffer, mime, stored);
+  if (!mediaId) {
+    await cleanup();
+    mediaRedirect(waId, "⚠️ WhatsApp a refusé le fichier (dépôt impossible) — réessaie.");
+  }
+
+  const result = await wa.sendMedia(waId, check.kind, mediaId, {
+    caption: legende || undefined,
+    manual: true,
+  });
+  if (!result.sent) {
+    await cleanup();
+    logDecision(log, "human_media_send_failed", {
+      waId,
+      kind: check.kind,
+      reason: result.reason,
+      metaCode: result.metaCode,
+    });
+    // Hors fenêtre 24 h, aucun repli n'existe pour un média : un template ne
+    // porte une photo que si elle fait partie du modèle approuvé.
+    mediaRedirect(
+      waId,
+      result.reason === "outside_24h_window"
+        ? "⚠️ Photo/vidéo non envoyée : plus de 24 h depuis le dernier message du client. Écris-lui d'abord un message (il passera par le template de relance) ; dès qu'il répond, tu pourras envoyer des médias."
+        : `⚠️ Photo/vidéo non envoyée : ${blockedSendMessage(result.reason)}`,
+    );
+  }
+
+  // Le média est PARTI chez le client : on ne supprime plus rien et on
+  // n'échoue plus l'action. Si l'écriture en base casse (disque plein, verrou),
+  // on le journalise et on prévient — mais on ne laisse pas croire à un échec
+  // d'envoi, ce qui pousserait à renvoyer la photo une seconde fois.
+  const etiquette = check.kind === "image" ? "[Photo envoyée]" : "[Vidéo envoyée]";
+  try {
+    core.messages.insert(
+      waId,
+      "human",
+      legende ? `${etiquette} ${legende}` : etiquette,
+      result.messageId ?? null,
+      Date.now(),
+      { type: check.kind, file: stored, mime },
+    );
+    core.contacts.setModeHumain(waId, true);
+  } catch (err) {
+    log.error({ err: String(err), waId, stored }, "human_media_record_failed");
+    revalidatePath(`/admin/conversations/${waId}`);
+    mediaRedirect(
+      waId,
+      "⚠️ Le média est bien parti au client, mais n'a pas pu être enregistré dans l'historique. Ne le renvoie pas.",
+    );
+  }
+  logDecision(log, "human_media_sent", { waId, kind: check.kind, bytes: file.size });
+  revalidatePath(`/admin/conversations/${waId}`);
+  redirect(`/admin/conversations/${waId}`);
+}
+
+function mediaRedirect(waId: string, message: string): never {
+  redirect(`/admin/conversations/${waId}?msg=${encodeURIComponent(message)}`);
+}
+
 /**
  * Capture d'un exemple appris (§6) depuis un envoi manuel réussi : les 3
  * derniers messages `user` avant la réponse, concaténés. N'insère rien si la
@@ -254,10 +365,20 @@ export async function releaseToBotAction(waId: string): Promise<void> {
   revalidatePath("/admin/conversations");
 }
 
+/**
+ * (Re)calcule le résumé d'une conversation. Appelée par le bouton
+ * « Régénérer », et automatiquement à l'ouverture de la conversation quand le
+ * résumé est en retard sur les messages (cf. `SummaryAutoRefresh`).
+ *
+ * Le marqueur `lastMessageId` est capturé AVANT l'appel LLM : si un message
+ * arrive pendant le calcul, le résumé reste marqué périmé et sera refait, au
+ * lieu d'être considéré comme à jour à tort.
+ */
 export async function regenerateSummaryAction(waId: string): Promise<void> {
   await requireSession();
   const { core, llm, model, log } = getRuntime();
   const contact = core.contacts.get(waId);
+  const couvertJusqua = core.messages.lastMessageId(waId);
   const resume = await summarizeConversation(
     llm,
     model,
@@ -267,7 +388,8 @@ export async function regenerateSummaryAction(waId: string): Promise<void> {
   );
   // Écriture ciblée : ne touche qu'au résumé, sans écraser l'état vivant du
   // bot (course inter-processus).
-  core.state.setResume(waId, resume);
+  core.state.setResume(waId, resume, couvertJusqua);
+  logDecision(log, "summary_regenerated", { waId, couvertJusqua });
   revalidatePath(`/admin/conversations/${waId}`);
 }
 
@@ -369,9 +491,21 @@ export async function regenerateFactsAction(waId: string): Promise<void> {
 
 export async function deleteHumanMessageAction(messageId: number, waId: string): Promise<void> {
   await requireSession();
-  const { core } = getRuntime();
+  const { core, log } = getRuntime();
+  // Lu AVANT la suppression : après, plus rien ne relie le fichier au message,
+  // et il resterait sur le volume pour toujours.
+  const mediaFile = core.messages.mediaFileOf(messageId);
   const deleted = core.messages.deleteHuman(messageId);
-  if (deleted) core.examples.removeByMessageId(messageId);
+  if (deleted) {
+    core.examples.removeByMessageId(messageId);
+    if (mediaFile) {
+      await unlink(join(mediaDir(), mediaFile)).catch((err: unknown) => {
+        // Le message est déjà supprimé : on n'échoue pas l'action pour un
+        // fichier récalcitrant, on le signale.
+        log.error({ err: String(err), mediaFile }, "media_file_delete_failed");
+      });
+    }
+  }
   revalidatePath(`/admin/conversations/${waId}`);
   redirect(`/admin/conversations/${waId}`);
 }
@@ -399,6 +533,60 @@ export async function addFaqAnswerAction(questionId: number, formData: FormData)
   core.questions.markAnswered(questionId);
   revalidatePath("/admin/questions");
   revalidatePath("/admin/catalogue");
+}
+
+/** Plafond par exécution : borne le coût LLM d'un classement (lots de 40). */
+const QUESTION_TOPIC_MAX = 200;
+
+/**
+ * Range les questions sous un sujet général. Par défaut, ne traite que les
+ * questions pas encore classées (incrémental, peu coûteux) ; `complet = 1`
+ * reprend aussi celles qui ont déjà un sujet, en repartant d'une nomenclature
+ * vierge.
+ */
+export async function regenerateQuestionTopicsAction(formData: FormData): Promise<void> {
+  await requireSession();
+  const { core, llm, model, log } = getRuntime();
+  const complet = String(formData.get("complet") ?? "") === "1";
+
+  // Rien n'est effacé avant l'appel : les sujets existants sont écrasés
+  // seulement par ce qui revient du LLM. Une panne au milieu laisse donc la
+  // nomenclature précédente intacte au lieu de vider la page.
+  const pending = complet
+    ? core.questions.all(QUESTION_TOPIC_MAX)
+    : core.questions.withoutTopic(QUESTION_TOPIC_MAX);
+  if (pending.length === 0) {
+    questionsRedirect("Toutes les questions sont déjà rangées par sujet.");
+  }
+  const assigned = await classifyQuestionTopics(
+    llm,
+    model,
+    pending.map((question) => ({ id: question.id, texte: question.texte })),
+    // « Tout reclasser » repart d'une nomenclature vierge — c'est justement ce
+    // qu'on lui demande quand les sujets actuels ne conviennent plus.
+    complet ? [] : core.questions.knownTopics(),
+    log,
+  );
+  for (const [id, sujet] of assigned) core.questions.setTopic(id, sujet);
+  logDecision(log, "question_topics_classified", {
+    demandees: pending.length,
+    classees: assigned.size,
+    complet,
+  });
+  revalidatePath("/admin/questions");
+  revalidatePath("/admin");
+  const reste = core.questions.withoutTopic(QUESTION_TOPIC_MAX + 1).length;
+  questionsRedirect(
+    assigned.size === 0
+      ? "⚠️ Classement impossible pour l'instant (LLM indisponible) — rien n'a été modifié, la vue par formulation reste utilisable."
+      : `✅ ${assigned.size} question(s) rangée(s) par sujet.${
+          reste > 0 ? ` ${reste} encore à classer — reclique pour continuer.` : ""
+        }`,
+  );
+}
+
+function questionsRedirect(message: string): never {
+  redirect(`/admin/questions?msg=${encodeURIComponent(message)}`);
 }
 
 // ── Catalogue & tarifs ──

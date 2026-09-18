@@ -62,6 +62,13 @@ export function getRuntime(): Runtime {
       apiKey: process.env.ANTHROPIC_API_KEY ?? "",
       baseUrl: process.env.ANTHROPIC_BASE_URL || undefined,
       model,
+      // Un humain attend devant l'écran : on borne court. Avec les défauts du
+      // SDK (10 min × 3 tentatives), un endpoint lent donnait un bouton
+      // « Régénérer » qui semblait ne rien faire, la requête étant abandonnée
+      // par le navigateur bien avant la réponse. Le bot, lui, garde les
+      // défauts généreux : lui n'a pas de repli.
+      timeoutMs: 60_000,
+      maxRetries: 1,
     }),
     {
       inputCentsPerMTok: Number(process.env.LLM_COST_INPUT_CENTS_PER_MTOK ?? 55),

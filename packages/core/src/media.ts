@@ -27,6 +27,87 @@ const EXTENSIONS: Record<string, string> = {
   "application/pdf": "pdf",
 };
 
+/** Type de média que le back-office peut envoyer à un client. */
+export type OutboundMediaKind = "image" | "video";
+
+/**
+ * Types MIME acceptés à l'ENVOI. Volontairement plus étroit qu'à la réception :
+ * Meta refuse le reste sur les messages image/vidéo (le webp est un sticker,
+ * le gif n'est pas supporté tel quel).
+ */
+const OUTBOUND_MIME: Record<string, OutboundMediaKind> = {
+  "image/jpeg": "image",
+  "image/png": "image",
+  "video/mp4": "video",
+  "video/3gpp": "video",
+};
+
+/** Plafonds Meta par type sortant — au-delà, l'API rejette l'upload. */
+export const OUTBOUND_MEDIA_MAX_BYTES: Record<OutboundMediaKind, number> = {
+  image: 5 * 1024 * 1024,
+  video: 16 * 1024 * 1024,
+};
+
+/** Extensions proposées au sélecteur de fichier du back-office. */
+export const OUTBOUND_MEDIA_ACCEPT = ".jpg,.jpeg,.png,.mp4,.3gp";
+
+/** `image` / `video` si le type MIME est envoyable, `null` sinon. */
+export function outboundMediaKind(mime: string): OutboundMediaKind | null {
+  const base = mime.split(";")[0]?.trim().toLowerCase() ?? "";
+  return OUTBOUND_MIME[base] ?? null;
+}
+
+/** Type MIME déduit de l'extension, pour les fichiers envoyables. */
+const OUTBOUND_MIME_BY_EXT: Record<string, string> = {
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  png: "image/png",
+  mp4: "video/mp4",
+  "3gp": "video/3gpp",
+};
+
+/**
+ * Type MIME à utiliser pour un fichier choisi dans le back-office. Le
+ * navigateur ne renseigne pas toujours `type` (extension inconnue du système,
+ * fréquent pour .3gp sous Windows) : on retombe alors sur l'extension, sinon
+ * un `.mp4` parfaitement valide serait refusé.
+ */
+export function outboundMimeFor(name: string, browserType: string): string {
+  if (outboundMediaKind(browserType)) return browserType.split(";")[0]!.trim().toLowerCase();
+  const ext = name.split(".").pop()?.toLowerCase() ?? "";
+  return OUTBOUND_MIME_BY_EXT[ext] ?? browserType;
+}
+
+export type OutboundMediaCheck =
+  | { ok: true; kind: OutboundMediaKind; mime: string }
+  | { ok: false; message: string };
+
+/**
+ * Contrôle d'un média sortant AVANT toute écriture disque ou appel réseau :
+ * type supporté par WhatsApp, fichier non vide, taille sous le plafond Meta.
+ * Renvoie le type MIME retenu (celui du navigateur, ou déduit de l'extension).
+ */
+export function checkOutboundMedia(file: { name: string; size: number; type: string }): OutboundMediaCheck {
+  if (file.size === 0) return { ok: false, message: "Fichier vide." };
+  const mime = outboundMimeFor(file.name, file.type || "");
+  const kind = outboundMediaKind(mime);
+  if (!kind) {
+    return {
+      ok: false,
+      message: "Format non supporté par WhatsApp — envoie une photo JPEG/PNG ou une vidéo MP4.",
+    };
+  }
+  const max = OUTBOUND_MEDIA_MAX_BYTES[kind];
+  if (file.size > max) {
+    const mb = Math.round(max / (1024 * 1024));
+    return {
+      ok: false,
+      message: `Fichier trop lourd : WhatsApp plafonne ${kind === "image" ? "les photos" : "les vidéos"} à ${mb} Mo.`,
+    };
+  }
+  return { ok: true, kind, mime };
+}
+
 export interface MediaConfig {
   apiBase: string;
   token: string;

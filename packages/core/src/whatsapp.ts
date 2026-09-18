@@ -268,6 +268,73 @@ export class WhatsAppClient {
     });
   }
 
+  /**
+   * Dépose un fichier chez Meta (POST /{phone-number-id}/media) et renvoie son
+   * identifiant, à passer ensuite à `sendMedia`. Endpoint et encodage
+   * différents des messages (multipart, pas de JSON) : cet appel ne passe donc
+   * pas par `dispatch`. Ne lève jamais — `null` en cas d'échec.
+   */
+  async uploadMedia(file: Buffer, mime: string, filename: string): Promise<string | null> {
+    const form = new FormData();
+    form.append("messaging_product", "whatsapp");
+    form.append("type", mime);
+    form.append("file", new Blob([new Uint8Array(file)], { type: mime }), filename);
+    try {
+      const response = await this.fetchFn(
+        `${this.opts.apiBase}/${this.opts.phoneNumberId}/media`,
+        { method: "POST", headers: { Authorization: `Bearer ${this.opts.token}` }, body: form },
+      );
+      if (!response.ok) {
+        const body = await response.text().catch(() => "");
+        this.log.error(
+          { status: response.status, mime, body: body.slice(0, 500) },
+          "whatsapp_media_upload_failed",
+        );
+        return null;
+      }
+      const json = (await response.json().catch(() => ({}))) as { id?: string };
+      if (!json.id) {
+        this.log.error({ mime }, "whatsapp_media_upload_no_id");
+        return null;
+      }
+      logDecision(this.log, "media_uploaded", { mediaId: json.id, mime, bytes: file.byteLength });
+      return json.id;
+    } catch (err) {
+      this.log.error({ err: String(err), mime }, "whatsapp_media_upload_error");
+      return null;
+    }
+  }
+
+  /**
+   * Envoie un média déjà déposé chez Meta (`uploadMedia`). `manual: true` =
+   * envoi déclenché par Jacob depuis le back-office : mêmes règles que
+   * `sendText` — pas de verrou local sur la fenêtre 24 h, l'opt-out bloque.
+   */
+  async sendMedia(
+    waId: string,
+    kind: "image" | "video" | "audio" | "document",
+    mediaId: string,
+    opts: { caption?: string; filename?: string; manual?: boolean } = {},
+  ): Promise<SendResult> {
+    const gate = opts.manual ? this.gate.canSendManual(waId) : this.gate.canSendFreeForm(waId);
+    if (!gate.ok) {
+      logDecision(this.log, "send_blocked", { waId, kind, reason: gate.reason });
+      return { sent: false, reason: gate.reason };
+    }
+    const media: Record<string, string> = { id: mediaId };
+    // WhatsApp refuse une légende sur l'audio, et `filename` n'existe que pour
+    // les documents.
+    if (opts.caption && kind !== "audio") media.caption = opts.caption.slice(0, 1024);
+    if (opts.filename && kind === "document") media.filename = opts.filename;
+    return this.dispatch(waId, kind, {
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to: waId,
+      type: kind,
+      [kind]: media,
+    });
+  }
+
   private dispatch(waId: string, kind: string, payload: unknown): Promise<SendResult> {
     const run = this.tail.then(async (): Promise<SendResult> => {
       const wait = this.lastSentAt + this.minGapMs - Date.now();

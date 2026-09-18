@@ -136,6 +136,8 @@ export interface ConversationStateData {
   sansProgression: number;
   replyCount: number;
   resume: string;
+  /** Id du dernier message pris en compte par `resume` (0 = jamais résumé). */
+  resumeMessageId: number;
 }
 
 const EMPTY_STATE: Omit<ConversationStateData, "waId"> = {
@@ -154,6 +156,7 @@ const EMPTY_STATE: Omit<ConversationStateData, "waId"> = {
   sansProgression: 0,
   replyCount: 0,
   resume: "",
+  resumeMessageId: 0,
 };
 
 function parseJson<T>(raw: string | null | undefined, fallback: T): T {
@@ -309,10 +312,29 @@ export function createCore(options: CreateCoreOptions) {
       const result = sqlite.prepare(`DELETE FROM messages WHERE id = ? AND role = 'human'`).run(id);
       return result.changes > 0;
     },
-    /** 40 derniers messages `human`, tous contacts confondus (guide de style appris, §6). */
+    /**
+     * Fichier média attaché à un message, à lire AVANT suppression : sans lui,
+     * le fichier resterait sur le volume sans plus aucune référence.
+     */
+    mediaFileOf(id: number): string {
+      const row = sqlite.prepare(`SELECT media_file AS f FROM messages WHERE id = ?`).get(id) as
+        | { f: string | null }
+        | undefined;
+      return row?.f ?? "";
+    },
+    /**
+     * 40 derniers messages `human`, tous contacts confondus (guide de style
+     * appris, §6). Les entrées techniques entre crochets ([Photo envoyée],
+     * [Template de relance envoyé…]) sont exclues : ce ne sont pas des phrases
+     * de Jacob, et le modèle finirait par imiter ces étiquettes.
+     */
     lastHumanMessages(limit = 40): Array<{ contenu: string }> {
       return sqlite
-        .prepare(`SELECT contenu FROM messages WHERE role = 'human' ORDER BY id DESC LIMIT ?`)
+        .prepare(
+          `SELECT contenu FROM messages
+           WHERE role = 'human' AND contenu NOT LIKE '[%'
+           ORDER BY id DESC LIMIT ?`,
+        )
         .all(limit) as Array<{ contenu: string }>;
     },
     /** Complète un message média une fois téléchargé/transcrit (traitement différé). */
@@ -362,6 +384,13 @@ export function createCore(options: CreateCoreOptions) {
         .get(waId) as { ts: number | null } | undefined;
       return row?.ts ?? null;
     },
+    /** Dernier message de la conversation, tous rôles — fraîcheur du résumé. */
+    lastMessageId(waId: string): number {
+      const row = sqlite
+        .prepare(`SELECT MAX(id) AS id FROM messages WHERE wa_id = ?`)
+        .get(waId) as { id: number | null } | undefined;
+      return row?.id ?? 0;
+    },
     lastUserMessageId(waId: string): number | null {
       const row = sqlite
         .prepare(`SELECT MAX(id) AS id FROM messages WHERE wa_id = ? AND role = 'user'`)
@@ -396,6 +425,7 @@ export function createCore(options: CreateCoreOptions) {
         sansProgression: row.sansProgression,
         replyCount: row.replyCount,
         resume: row.resume,
+        resumeMessageId: row.resumeMessageId,
       };
     },
     save(state: ConversationStateData): void {
@@ -416,25 +446,34 @@ export function createCore(options: CreateCoreOptions) {
         sansProgression: state.sansProgression,
         replyCount: state.replyCount,
         resume: state.resume,
+        resumeMessageId: state.resumeMessageId,
         updatedAt: now(),
       };
-      // `resume` est exclu de l'UPDATE : il appartient au dashboard (setResume).
-      // Sans ça, un save du bot pendant une régénération de résumé écraserait
-      // silencieusement le résumé fraîchement calculé (course inter-processus).
-      const { resume: _resume, ...updateSet } = values;
+      // `resume` et son marqueur de fraîcheur sont exclus de l'UPDATE : ils
+      // appartiennent au producteur du résumé (setResume). Sans ça, un save du
+      // bot pendant une régénération écraserait silencieusement le résumé
+      // fraîchement calculé (course inter-processus).
+      const { resume: _resume, resumeMessageId: _resumeMessageId, ...updateSet } = values;
       db.insert(schema.conversationState)
         .values(values)
         .onConflictDoUpdate({ target: schema.conversationState.waId, set: updateSet })
         .run();
     },
-    /** Écriture ciblée du résumé (dashboard) : ne touche à aucun champ vivant du bot. */
-    setResume(waId: string, resume: string): void {
+    /**
+     * Écriture ciblée du résumé (dashboard) : ne touche à aucun champ vivant
+     * du bot. `messageId` = dernier message couvert, ce qui rend le résumé
+     * auto-vérifiable (périmé dès qu'un message plus récent existe).
+     */
+    setResume(waId: string, resume: string, messageId = 0): void {
       sqlite
         .prepare(
-          `INSERT INTO conversation_state (wa_id, resume, updated_at) VALUES (?, ?, ?)
-           ON CONFLICT(wa_id) DO UPDATE SET resume = excluded.resume, updated_at = excluded.updated_at`,
+          `INSERT INTO conversation_state (wa_id, resume, resume_message_id, updated_at)
+           VALUES (?, ?, ?, ?)
+           ON CONFLICT(wa_id) DO UPDATE SET resume = excluded.resume,
+                                            resume_message_id = excluded.resume_message_id,
+                                            updated_at = excluded.updated_at`,
         )
-        .run(waId, resume, now());
+        .run(waId, resume, messageId, now());
     },
     reset(waId: string): void {
       db.delete(schema.conversationState).where(eq(schema.conversationState.waId, waId)).run();
@@ -665,6 +704,33 @@ export function createCore(options: CreateCoreOptions) {
     },
     markAnswered(id: number): void {
       db.update(schema.questions).set({ repondue: 1 }).where(eq(schema.questions.id, id)).run();
+    },
+    /** Questions pas encore rattachées à un sujet général (les plus récentes d'abord). */
+    withoutTopic(limit = 200) {
+      return db
+        .select()
+        .from(schema.questions)
+        .where(eq(schema.questions.sujet, ""))
+        .orderBy(desc(schema.questions.id))
+        .limit(limit)
+        .all();
+    },
+    setTopic(id: number, sujet: string): void {
+      db.update(schema.questions).set({ sujet }).where(eq(schema.questions.id, id)).run();
+    },
+    /**
+     * Sujets déjà en base, du plus fréquent au plus rare. Sert à ancrer le
+     * classement : une nouvelle question rejoint un sujet existant plutôt que
+     * d'en créer un quasi-identique.
+     */
+    knownTopics(limit = 30): string[] {
+      const rows = sqlite
+        .prepare(
+          `SELECT sujet, COUNT(*) AS n FROM questions WHERE sujet <> ''
+           GROUP BY sujet ORDER BY n DESC LIMIT ?`,
+        )
+        .all(limit) as Array<{ sujet: string }>;
+      return rows.map((row) => row.sujet);
     },
   };
 

@@ -1,4 +1,9 @@
-import { displayMediaText, serviceWindow } from "@arbi/core";
+import {
+  displayMediaText,
+  OUTBOUND_MEDIA_ACCEPT,
+  OUTBOUND_MEDIA_MAX_BYTES,
+  serviceWindow,
+} from "@arbi/core";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
@@ -10,6 +15,7 @@ import {
   regenerateSummaryAction,
   releaseToBotAction,
   removeFactAction,
+  sendHumanMediaAction,
   sendHumanMessageAction,
   sendRelanceTemplateAction,
   takeOverAction,
@@ -18,6 +24,8 @@ import {
 import { requireSession } from "@/lib/auth";
 import { getRuntime } from "@/lib/core";
 import { formatDuration } from "@/lib/time";
+import { MediaPicker } from "./media-picker";
+import { SummaryAutoRefresh } from "./summary-refresh";
 
 export const dynamic = "force-dynamic";
 
@@ -53,6 +61,12 @@ export default async function ConversationDetailPage({
   // informatif. Elle ne verrouille PLUS le champ de réponse — Jacob doit
   // toujours pouvoir reprendre la main : hors fenêtre, l'envoi bascule
   // automatiquement sur le template de relance (cf. sendHumanMessageAction).
+  // Résumé périmé = un message est arrivé après celui qu'il couvre. Le
+  // composant client déclenche alors la régénération en arrière-plan, sans
+  // retarder l'affichage de la conversation.
+  const lastMessageId = core.messages.lastMessageId(waId);
+  const resumeStale = lastMessageId > state.resumeMessageId;
+
   const windowState = serviceWindow(core.messages.lastInboundTs(waId), Date.now());
   const relanceTemplate = core.settings.get("relance_template_name").trim();
   // Seul l'opt-out (STOP) bloque encore : écrire à un désabonné met en danger
@@ -136,16 +150,26 @@ export default async function ConversationDetailPage({
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="space-y-4 lg:col-span-2">
           <div className="card">
-            <div className="mb-2 flex items-center justify-between">
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
               <h2 className="font-semibold">Résumé automatique</h2>
-              <form action={regenerateSummaryAction.bind(null, waId)}>
-                <button className="btn btn-secondary" type="submit">
-                  🔄 Régénérer
-                </button>
-              </form>
+              <div className="flex items-center gap-2">
+                <SummaryAutoRefresh
+                  waId={waId}
+                  stale={resumeStale}
+                  lastMessageId={lastMessageId}
+                />
+                <form action={regenerateSummaryAction.bind(null, waId)}>
+                  <button className="btn btn-secondary" type="submit">
+                    🔄 Régénérer
+                  </button>
+                </form>
+              </div>
             </div>
             <p className="whitespace-pre-wrap text-sm text-neutral-700">
-              {state.resume || "Pas encore de résumé — clique sur Régénérer."}
+              {state.resume ||
+                (resumeStale
+                  ? "Résumé en cours de génération…"
+                  : "Pas encore de résumé — clique sur Régénérer.")}
             </p>
           </div>
 
@@ -193,7 +217,7 @@ export default async function ConversationDetailPage({
                             {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img
                               src={`/api/media/${message.mediaFile}`}
-                              alt="Photo envoyée par le client"
+                              alt={isHuman ? "Photo envoyée par Jacob" : "Photo envoyée par le client"}
                               className="max-h-64 rounded-lg border border-neutral-200"
                             />
                           </a>
@@ -277,6 +301,32 @@ export default async function ConversationDetailPage({
               <button className="btn btn-primary" type="submit" disabled={sendDisabled}>
                 Envoyer
               </button>
+            </form>
+            {/* Formulaire distinct : un envoi de média a son propre corps
+                multipart, et un <form> ne peut pas en contenir un autre. */}
+            <form
+              action={sendHumanMediaAction.bind(null, waId)}
+              className="flex flex-wrap items-center gap-2 border-t border-neutral-100 pt-2"
+            >
+              <MediaPicker
+                disabled={sendDisabled}
+                accept={OUTBOUND_MEDIA_ACCEPT}
+                maxImageBytes={OUTBOUND_MEDIA_MAX_BYTES.image}
+                maxVideoBytes={OUTBOUND_MEDIA_MAX_BYTES.video}
+              />
+              <input
+                name="legende"
+                className="input w-full md:w-56"
+                placeholder="Légende (facultative)…"
+                autoComplete="off"
+                disabled={sendDisabled}
+              />
+              <button className="btn btn-secondary" type="submit" disabled={sendDisabled}>
+                📎 Envoyer
+              </button>
+              <span className="w-full text-xs text-neutral-400">
+                Photo JPEG/PNG jusqu&apos;à 5 Mo, vidéo MP4 jusqu&apos;à 16 Mo — limites WhatsApp.
+              </span>
             </form>
             {/* En dehors du <form> ci-dessus : un <form> ne peut pas en contenir un autre (HTML). */}
             {contact.optOut === 1 && (

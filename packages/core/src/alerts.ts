@@ -104,6 +104,9 @@ export async function triggerAlert(
   const clientLabel = contact?.nom ? `${contact.nom} (+${input.waId})` : `+${input.waId}`;
   const transcript = core.messages.history(input.waId, 40);
   const resume = await summarizeConversation(deps.llm, deps.model, transcript, log, contact?.nom);
+  // Ce résumé sert aussi au back-office : sans ça, Jacob ouvre la conversation
+  // depuis l'alerte et déclenche aussitôt un second calcul quasi identique.
+  core.state.setResume(input.waId, resume, core.messages.lastMessageId(input.waId));
 
   const alertId = core.alerts.create({
     waId: input.waId,

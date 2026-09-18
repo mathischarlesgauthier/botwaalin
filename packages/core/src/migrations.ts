@@ -83,6 +83,7 @@ CREATE TABLE IF NOT EXISTS conversation_state (
   sans_progression  INTEGER NOT NULL DEFAULT 0,
   reply_count       INTEGER NOT NULL DEFAULT 0,
   resume            TEXT NOT NULL DEFAULT '',
+  resume_message_id INTEGER NOT NULL DEFAULT 0,
   updated_at        INTEGER NOT NULL
 );
 
@@ -109,9 +110,14 @@ CREATE TABLE IF NOT EXISTS questions (
   categorie  TEXT NOT NULL DEFAULT 'Autre',
   repondue   INTEGER NOT NULL DEFAULT 1,
   alerte_id  INTEGER,
+  sujet      TEXT NOT NULL DEFAULT '',
   created_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_questions_norm ON questions (normalise);
+-- L'index sur la colonne sujet est créé plus bas, APRÈS les ALTER : sur une
+-- base existante, CREATE TABLE IF NOT EXISTS est un no-op et la colonne
+-- n'existe pas encore ici. Un index posé à cet endroit échouerait sur
+-- « no such column » et interromprait toute la migration.
 
 CREATE TABLE IF NOT EXISTS catalogue_versions (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -254,6 +260,22 @@ export function migrate(db: BetterSqlite3.Database): void {
   if (stateCols.size > 0 && !stateCols.has("resume")) {
     db.exec(`ALTER TABLE conversation_state ADD COLUMN resume TEXT NOT NULL DEFAULT ''`);
   }
+
+  // v2.2 : dernier message couvert par le résumé — sert à savoir s'il est
+  // périmé (et donc à le régénérer tout seul) sans le recalculer à l'aveugle.
+  if (stateCols.size > 0 && !stateCols.has("resume_message_id")) {
+    db.exec(
+      `ALTER TABLE conversation_state ADD COLUMN resume_message_id INTEGER NOT NULL DEFAULT 0`,
+    );
+  }
+
+  // v2.2 : sujet général d'une question (regroupement thématique du back-office).
+  const questionCols = tableColumns(db, "questions");
+  if (questionCols.size > 0 && !questionCols.has("sujet")) {
+    db.exec(`ALTER TABLE questions ADD COLUMN sujet TEXT NOT NULL DEFAULT ''`);
+  }
+  // Après l'ALTER, donc valable aussi bien pour une base neuve que migrée.
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_questions_sujet ON questions (sujet)`);
 
   // v1 → v2 : colonnes ajoutées sur contacts
   const contactCols = tableColumns(db, "contacts");

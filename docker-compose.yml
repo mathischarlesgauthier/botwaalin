@@ -11,6 +11,12 @@ services:
       PORT: "3000"
       DB_PATH: /app/data/agent.db
       CATALOGUE_PATH: /app/data/catalogue.md
+      # Chemins ABSOLUS obligatoires : le bot et le dashboard lisent et
+      # écrivent les mêmes médias (reçus des clients, envoyés depuis le
+      # back-office). Les défauts sont relatifs au répertoire courant, qui
+      # diffère entre les deux services.
+      MEDIA_DIR: /app/data/media
+      DOCS_DIR: /app/data/documents
     volumes:
       - ./data:/app/data
     restart: unless-stopped
@@ -39,6 +45,9 @@ services:
       PORT: "3001"
       DB_PATH: /app/data/agent.db
       CATALOGUE_PATH: /app/data/catalogue.md
+      # Mêmes dossiers que le bot (cf. commentaire du service bot).
+      MEDIA_DIR: /app/data/media
+      DOCS_DIR: /app/data/documents
     volumes:
       - ./data:/app/data
     restart: unless-stopped

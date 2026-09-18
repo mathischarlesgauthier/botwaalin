@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { displayMediaText, mediaPlaceholder } from "../src/media";
+import {
+  checkOutboundMedia,
+  displayMediaText,
+  mediaPlaceholder,
+  OUTBOUND_MEDIA_MAX_BYTES,
+  outboundMediaKind,
+} from "../src/media";
 
 describe("displayMediaText (§1 — affichage back-office des médias)", () => {
   it("photo avec légende : renvoie la légende seule", () => {
@@ -81,5 +87,78 @@ describe("displayMediaText (§1 — affichage back-office des médias)", () => {
     const original = mediaPlaceholder("image", "test");
     displayMediaText(original, "f.jpg", "image/jpeg");
     expect(mediaPlaceholder("image", "test")).toBe(original);
+  });
+});
+
+describe("checkOutboundMedia — photo/vidéo envoyées depuis le back-office", () => {
+  const file = (type: string, size: number, name = "x") => ({ name, size, type });
+
+  it("accepte une photo JPEG et une vidéo MP4", () => {
+    expect(checkOutboundMedia(file("image/jpeg", 1000, "photo.jpg"))).toEqual({
+      ok: true,
+      kind: "image",
+      mime: "image/jpeg",
+    });
+    expect(checkOutboundMedia(file("video/mp4", 1000, "clip.mp4"))).toEqual({
+      ok: true,
+      kind: "video",
+      mime: "video/mp4",
+    });
+  });
+
+  it("tolère un type MIME avec paramètre et une casse inattendue", () => {
+    expect(checkOutboundMedia(file("IMAGE/PNG; charset=binary", 10, "p.png"))).toEqual({
+      ok: true,
+      kind: "image",
+      mime: "image/png",
+    });
+  });
+
+  it("navigateur sans type MIME : repli sur l'extension du fichier", () => {
+    // Cas réel : .3gp (et parfois .mp4) non enregistré côté système, le
+    // navigateur envoie alors type === "".
+    expect(checkOutboundMedia(file("", 1000, "video.3gp"))).toEqual({
+      ok: true,
+      kind: "video",
+      mime: "video/3gpp",
+    });
+    expect(checkOutboundMedia(file("", 1000, "PHOTO.JPEG"))).toEqual({
+      ok: true,
+      kind: "image",
+      mime: "image/jpeg",
+    });
+  });
+
+  it("extension inconnue et type absent : refusé", () => {
+    expect(checkOutboundMedia(file("", 1000, "archive.zip")).ok).toBe(false);
+    expect(checkOutboundMedia(file("", 1000, "sans-extension")).ok).toBe(false);
+  });
+
+  it("refuse un format que WhatsApp n'accepte pas à l'envoi (webp, gif, pdf)", () => {
+    for (const mime of ["image/webp", "image/gif", "application/pdf", ""]) {
+      const result = checkOutboundMedia(file(mime, 1000));
+      expect(result.ok).toBe(false);
+    }
+  });
+
+  it("refuse un fichier vide", () => {
+    expect(checkOutboundMedia(file("image/jpeg", 0)).ok).toBe(false);
+  });
+
+  it("refuse au-delà du plafond Meta, par type", () => {
+    const image = checkOutboundMedia(file("image/jpeg", OUTBOUND_MEDIA_MAX_BYTES.image + 1));
+    expect(image.ok).toBe(false);
+    // Une vidéo de la même taille reste acceptée : le plafond vidéo est plus haut.
+    expect(checkOutboundMedia(file("video/mp4", OUTBOUND_MEDIA_MAX_BYTES.image + 1)).ok).toBe(true);
+    expect(checkOutboundMedia(file("video/mp4", OUTBOUND_MEDIA_MAX_BYTES.video + 1)).ok).toBe(false);
+  });
+
+  it("pile exactement au plafond : accepté", () => {
+    expect(checkOutboundMedia(file("image/jpeg", OUTBOUND_MEDIA_MAX_BYTES.image)).ok).toBe(true);
+  });
+
+  it("outboundMediaKind renvoie null hors des formats envoyables", () => {
+    expect(outboundMediaKind("image/jpeg")).toBe("image");
+    expect(outboundMediaKind("audio/ogg")).toBeNull();
   });
 });

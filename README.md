@@ -80,6 +80,24 @@ Le back-office ne verrouille **jamais** le champ de réponse : Jacob doit toujou
 
 Une fois le template APPROVED, renseigne son nom dans **Dashboard → Réglages → Template de relance client**. Sans template configuré (ou sans variable dans son corps), hors fenêtre l'envoi échoue et le brouillon est conservé dans le champ — c'est une règle Meta, pas une limite du code.
 
+## Back-office : conversation
+
+### Envoyer une photo ou une vidéo
+
+Sous le champ de réponse, un second formulaire envoie un média au client, avec légende facultative. Le fichier est archivé sur le volume (même dossier que les médias reçus, donc visible dans le fil), déposé chez Meta, puis envoyé ; en cas d'échec il est supprimé, rien ne traîne sur le disque.
+
+Limites imposées par WhatsApp, vérifiées avant tout envoi : **photo JPEG/PNG ≤ 5 Mo, vidéo MP4/3GP ≤ 16 Mo**. Le webp, le gif et le PDF sont refusés à l'envoi (WhatsApp ne les accepte pas sur un message image/vidéo). Hors fenêtre 24 h un média ne peut pas partir du tout — aucun template ne peut le porter : écris d'abord un message, et attends que le client réponde.
+
+⚠️ `MEDIA_DIR` doit pointer vers le **même dossier absolu** pour le bot et pour le dashboard (`/app/data/media` sur Railway). Le serveur Next standalone change de répertoire courant au démarrage : sans variable explicite, il écrirait et relirait les médias ailleurs que le bot.
+
+### Résumé automatique
+
+Le résumé se régénère **tout seul** à l'ouverture d'une conversation dès qu'un message est arrivé depuis le dernier calcul (colonne `conversation_state.resume_message_id`). La page s'affiche immédiatement et le résumé se met à jour en arrière-plan ; le bouton « 🔄 Régénérer » reste disponible pour forcer. Les appels LLM sont bornés à 60 s (avant, un endpoint lent pouvait bloquer une demi-heure sans rien afficher).
+
+### Questions par sujet
+
+L'onglet « Par sujet » range les questions clients sous un **thème général** — « Tarifs et devis », « Délais de livraison » — au lieu de lister des formulations quasi identiques. Le classement est fait par le LLM, stocké en base (`questions.sujet`) et relancé avec « 🧠 Classer les nouvelles » (incrémental) ou « ♻️ Tout reclasser ». L'onglet « Formulations exactes » conserve l'ancien regroupement par similarité, qui sert aussi de repli si le LLM est indisponible.
+
 ## Procédure Meta Business
 
 1. **Vérification de l'entreprise** : business.facebook.com → Centre de sécurité → Vérification (Kbis, 1-5 j). Sans elle : 250 conversations/jour max.
@@ -97,12 +115,16 @@ Une fois le template APPROVED, renseigne son nom dans **Dashboard → Réglages 
 
 ## Tests (`npm test`)
 
+La commande lance les trois suites : `packages/core`, `apps/bot` et `apps/dashboard`.
+
 - **Mémoire contextuelle** : l'enchaînement exact « Je cherche un agent. » → « Des casquettes. » → « Et les prix ? » reste sur China Accès.
 - **Prix hors catalogue** : montants de la grille (dont anciens prix v1 retirés) — le garde-fou bloque tout le reste.
 - **Anti-répétition** : jamais deux fois la même expression familière, espacement de 4 réponses minimum.
 - **Alertes** : création, résumé, cascade template → texte → aucune, déduplication, déclencheurs (réclamation, 3 sans progression).
 - **Mode humain** : bot totalement silencieux, réactivation auto après délai.
 - **Numéro admin** : seed env → base autorité, historique des modifications, validation E.164.
+- **Envoi de médias** : formats et plafonds WhatsApp (photo 5 Mo, vidéo 16 Mo), refus du webp/gif/pdf.
+- **Questions par sujet** : classement LLM, nettoyage des libellés, robustesse du parsing (ids inventés, lignes parasites, panne LLM).
 - Plus : signature HMAC du webhook, débounce, opt-out STOP/START, fenêtre 24 h, dédup wamid, boutons interactifs.
 
 ## Sécurité

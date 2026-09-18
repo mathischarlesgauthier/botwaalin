@@ -1,20 +1,22 @@
 import Link from "next/link";
-import { addFaqAnswerAction } from "@/lib/actions";
+import { addFaqAnswerAction, regenerateQuestionTopicsAction } from "@/lib/actions";
 import { requireSession } from "@/lib/auth";
 import { getRuntime } from "@/lib/core";
-import { groupQuestions } from "@/lib/stats";
+import { countQuestionsWithoutTopic, groupQuestions, groupQuestionsByTopic } from "@/lib/stats";
 
 export const dynamic = "force-dynamic";
 
 export default async function QuestionsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ onglet?: string }>;
+  searchParams: Promise<{ onglet?: string; msg?: string }>;
 }) {
   await requireSession();
-  const { onglet = "frequentes" } = await searchParams;
+  const { onglet = "sujets", msg } = await searchParams;
   const { core } = getRuntime();
 
+  const topics = groupQuestionsByTopic(core);
+  const sansSujet = countQuestionsWithoutTopic(core);
   const groups = groupQuestions(core);
   const unanswered = core.questions.unanswered(100);
 
@@ -22,12 +24,22 @@ export default async function QuestionsPage({
     <div className="space-y-4">
       <h1 className="text-2xl font-bold">Questions</h1>
 
-      <div className="flex gap-2">
+      {msg && (
+        <div className="card border border-neutral-200 text-sm text-neutral-700">{msg}</div>
+      )}
+
+      <div className="flex flex-wrap gap-2">
+        <Link
+          href="/admin/questions?onglet=sujets"
+          className={`btn ${onglet === "sujets" ? "btn-primary" : "btn-secondary"}`}
+        >
+          Par sujet ({topics.length})
+        </Link>
         <Link
           href="/admin/questions?onglet=frequentes"
           className={`btn ${onglet === "frequentes" ? "btn-primary" : "btn-secondary"}`}
         >
-          Questions fréquentes ({groups.length})
+          Formulations exactes ({groups.length})
         </Link>
         <Link
           href="/admin/questions?onglet=sans-reponse"
@@ -36,6 +48,75 @@ export default async function QuestionsPage({
           Sans réponse ({unanswered.length})
         </Link>
       </div>
+
+      {onglet === "sujets" && (
+        <div className="space-y-3">
+          <div className="card flex flex-wrap items-center justify-between gap-2">
+            <p className="text-sm text-neutral-500">
+              Les questions sont rangées par <strong>thème</strong> — « Tarifs et devis » plutôt que
+              « combien coûte le volant Megane 3RS ». {sansSujet > 0
+                ? `${sansSujet} question(s) pas encore classée(s).`
+                : "Tout est classé."}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <form action={regenerateQuestionTopicsAction}>
+                <button className="btn btn-primary" type="submit">
+                  🧠 Classer les nouvelles
+                </button>
+              </form>
+              <form action={regenerateQuestionTopicsAction}>
+                <input type="hidden" name="complet" value="1" />
+                <button className="btn btn-secondary" type="submit">
+                  ♻️ Tout reclasser
+                </button>
+              </form>
+            </div>
+          </div>
+
+          <div className="card overflow-x-auto p-0">
+            <table className="w-full min-w-140 text-sm">
+              <thead className="bg-neutral-50 text-left text-xs uppercase text-neutral-400">
+                <tr>
+                  <th className="px-4 py-2 font-medium">Sujet</th>
+                  <th className="px-4 py-2 font-medium">Occurrences</th>
+                  <th className="px-4 py-2 font-medium">Sans réponse</th>
+                  <th className="px-4 py-2 font-medium">Catégorie</th>
+                </tr>
+              </thead>
+              <tbody>
+                {topics.map((topic) => (
+                  <tr key={topic.sujet} className="border-t border-neutral-100 align-top">
+                    <td className="px-4 py-2">
+                      <div className="font-medium">{topic.sujet}</div>
+                      <ul className="mt-1 space-y-0.5 text-xs text-neutral-500">
+                        {topic.exemples.map((exemple, i) => (
+                          <li key={i} className="truncate">
+                            « {exemple.texte} »{exemple.count > 1 ? ` ×${exemple.count}` : ""}
+                          </li>
+                        ))}
+                      </ul>
+                    </td>
+                    <td className="px-4 py-2 font-semibold">×{topic.count}</td>
+                    <td className="px-4 py-2 text-neutral-600">
+                      {topic.sansReponse > 0 ? `⚠️ ${topic.sansReponse}` : "—"}
+                    </td>
+                    <td className="px-4 py-2 text-neutral-600">{topic.categorie}</td>
+                  </tr>
+                ))}
+                {topics.length === 0 && (
+                  <tr>
+                    <td colSpan={4} className="px-4 py-8 text-center text-neutral-400">
+                      {sansSujet > 0
+                        ? "Aucun sujet encore : clique sur « Classer les nouvelles »."
+                        : "Pas encore de questions enregistrées."}
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {onglet === "frequentes" && (
         <div className="card overflow-x-auto p-0">

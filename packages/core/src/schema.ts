@@ -84,6 +84,8 @@ export const conversationState = sqliteTable("conversation_state", {
   replyCount: integer("reply_count").notNull().default(0),
   /** Résumé automatique de la conversation (régénérable depuis le dashboard) */
   resume: text("resume").notNull().default(""),
+  /** Id du dernier message couvert par `resume` : au-delà, le résumé est périmé. */
+  resumeMessageId: integer("resume_message_id").notNull().default(0),
   updatedAt: integer("updated_at").notNull(),
 });
 
@@ -111,6 +113,8 @@ export const questions = sqliteTable("questions", {
   categorie: text("categorie").notNull().default("Autre"),
   repondue: integer("repondue").notNull().default(1),
   alerteId: integer("alerte_id"),
+  /** Sujet général (« Tarifs et devis »…) attribué par le classement thématique. */
+  sujet: text("sujet").notNull().default(""),
   createdAt: integer("created_at").notNull(),
 });
 

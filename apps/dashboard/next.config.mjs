@@ -4,12 +4,13 @@ const nextConfig = {
   serverExternalPackages: ["better-sqlite3", "argon2", "pino", "@arbi/core"],
   experimental: {
     serverActions: {
-      // La limite métier (DOCUMENT_MAX_BYTES, packages/core/src/documents.ts)
-      // est 5 Mo : sans ceci, Next applique sa limite par défaut de 1 Mo au
-      // corps des Server Actions AVANT que uploadDocumentAction ne s'exécute
-      // — un fichier valide entre 1 et 5 Mo plante en 500 au lieu du message
-      // d'erreur métier. Marge au-delà de 5 Mo pour l'overhead multipart.
-      bodySizeLimit: "6mb",
+      // Next applique sa limite par défaut de 1 Mo au corps des Server Actions
+      // AVANT que l'action ne s'exécute : un fichier valide plante alors en 500
+      // au lieu d'afficher le message d'erreur métier. La plus grosse limite
+      // métier est la vidéo WhatsApp (OUTBOUND_MEDIA_MAX_BYTES.video = 16 Mo,
+      // packages/core/src/media.ts) ; les documents plafonnent à 5 Mo. Marge
+      // au-delà de 16 Mo pour l'overhead multipart.
+      bodySizeLimit: "18mb",
     },
   },
   // Le back-office a déménagé sous /admin (la racine est le site public).

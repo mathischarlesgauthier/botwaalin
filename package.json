@@ -16,7 +16,7 @@
     "dev:bot": "npm run dev -w apps/bot",
     "dev:dashboard": "npm run dev -w apps/dashboard",
     "start:bot": "npm run start -w apps/bot",
-    "test": "npm run build -w packages/core && npm run test -w apps/bot",
+    "test": "npm run build -w packages/core && npm run test -w packages/core && npm run test -w apps/bot && npm run test -w apps/dashboard",
     "typecheck": "npm run build -w packages/core && npm run typecheck -w apps/bot"
   }
 }
