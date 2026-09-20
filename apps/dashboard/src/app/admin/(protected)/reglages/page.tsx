@@ -44,9 +44,27 @@ export default async function ReglagesPage({
     relanceTemplateName.length > 0 &&
     templateCheck.templates.some((t) => t.name === relanceTemplateName && t.status === "APPROVED");
 
+  // Version réellement en ligne : permet de vérifier d'un coup d'œil qu'un
+  // déploiement est bien arrivé, au lieu de se demander si la page affichée
+  // est à jour.
+  const deploiement = (process.env.RAILWAY_DEPLOYMENT_ID ?? "").slice(0, 8);
+  const enLigneDepuis = new Date(Date.now() - process.uptime() * 1000);
+
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">Réglages</h1>
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h1 className="text-2xl font-bold">Réglages</h1>
+        <span className="text-xs text-neutral-400">
+          En ligne depuis le{" "}
+          {enLigneDepuis.toLocaleString("fr-FR", {
+            day: "2-digit",
+            month: "2-digit",
+            hour: "2-digit",
+            minute: "2-digit",
+          })}
+          {deploiement ? ` · version ${deploiement}` : ""}
+        </span>
+      </div>
       {msg && <div className="card border-emerald-300 bg-emerald-50 text-sm">{msg}</div>}
 
       <div className="card flex items-center justify-between">
