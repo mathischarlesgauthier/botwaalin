@@ -92,6 +92,16 @@ Limites imposées par WhatsApp, vérifiées avant tout envoi : **photo JPEG/PNG 
 
 Le résumé se régénère **tout seul** à l'ouverture d'une conversation dès qu'un message est arrivé depuis le dernier calcul (colonne `conversation_state.resume_message_id`). La page s'affiche immédiatement et le résumé se met à jour en arrière-plan ; le bouton « 🔄 Régénérer » reste disponible pour forcer. Les appels LLM sont bornés à 60 s (avant, un endpoint lent pouvait bloquer une demi-heure sans rien afficher).
 
+### Autonomie du bot
+
+**Réglages → Autonomie du bot** règle la fréquence du message « je transmets à Jacob » :
+
+- **Autonome** (défaut) — il ne passe la main que si le client demande un humain, s'il faut un devis ferme ou un paiement, ou si l'information est réellement introuvable dans la grille, le catalogue et les documents. Une comparaison d'offres, une objection commerciale ou une question sur ce qui est inclus, il les traite seul.
+- **Équilibrée** — il passe la main dès qu'il n'est pas sûr.
+- **Prudente** — il passe la main au moindre doute (ancien comportement).
+
+Le réglage ne touche aucun garde-fou : quel que soit le niveau, les prix viennent de la grille, rien n'est inventé, et réclamations, litiges et paiements partent toujours en alerte. Le compteur « échanges sans progression » qui déclenche une alerte automatique se règle juste au-dessus (défaut : 5).
+
 ### Abonnement
 
 **Facturation** affiche la date du **prochain prélèvement** et le nombre de jours restants, calculés sur la date anniversaire de l'abonnement (même règle que Stripe, jour clampé en fin de mois).

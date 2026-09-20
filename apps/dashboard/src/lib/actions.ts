@@ -935,6 +935,12 @@ export async function saveGeneralSettingsAction(formData: FormData): Promise<voi
   if (Number.isFinite(threshold) && threshold >= 1 && threshold <= 10) {
     core.settings.set("alert_threshold", threshold);
   }
+  const autonomie = String(formData.get("bot_autonomie") ?? "");
+  // Liste fermée : une valeur inattendue laisserait le prompt sans consigne
+  // d'autonomie du tout.
+  if (autonomie === "autonome" || autonomie === "equilibre" || autonomie === "prudent") {
+    core.settings.set("bot_autonomie", autonomie);
+  }
   const niveau4 = String(formData.get("niveau4_message") ?? "").trim();
   if (niveau4) core.settings.set("niveau4_message", niveau4);
   revalidatePath("/admin/reglages");

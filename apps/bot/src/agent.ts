@@ -111,9 +111,12 @@ export class SalesAgent {
     const styleGuideRow = core.sqlite
       .prepare(`SELECT updated_at AS m FROM settings WHERE key = 'style_guide_appris'`)
       .get() as { m: number } | undefined;
+    // `bot_autonomie` fait partie de l'empreinte : sans lui, changer le réglage
+    // au back-office ne régénérerait pas le prompt en cache.
     const stamp =
       `${core.catalogue.currentVersionId()}:${pricingStampRow.n}:${pricingStampRow.m}` +
-      `:${docStamp.n}:${docStamp.m}:${exStamp.n}:${exStamp.m}:${styleGuideRow?.m ?? 0}`;
+      `:${docStamp.n}:${docStamp.m}:${exStamp.n}:${exStamp.m}:${styleGuideRow?.m ?? 0}` +
+      `:${core.settings.get("bot_autonomie")}`;
     if (stamp === this.versionStamp) return;
     const catalogue = core.catalogue.current().contenu;
     const rows = core.pricing.active();
@@ -123,6 +126,7 @@ export class SalesAgent {
       core.documents.actifs(),
       core.examples.actifs(12),
       core.settings.get("style_guide_appris"),
+      core.settings.get("bot_autonomie"),
     );
     // INVARIANT §0.1 : allowedAmounts ne prend QUE pricing + catalogue — jamais
     // les documents/exemples appris, qui n'élargissent JAMAIS les montants

@@ -82,7 +82,19 @@ export const SETTINGS_DEFAULTS = {
   group_link: "https://t.me/+P6Vba87ei95lZGJk",
   bot_actif: true,
   reactivation_delay_h: 24,
-  alert_threshold: 3,
+  /**
+   * Nombre d'échanges sans progression avant d'alerter Jacob. Volontairement
+   * haut : une conversation qui piétine deux tours n'a pas besoin d'un humain,
+   * le bot doit d'abord essayer de débloquer lui-même.
+   */
+  alert_threshold: 5,
+  /**
+   * Jusqu'où le bot se débrouille seul avant de passer la main.
+   * autonome (défaut) : il passe la main seulement quand l'information est
+   * introuvable ou qu'un engagement est en jeu · equilibre : il passe la main
+   * dès qu'il n'est pas sûr · prudent : au moindre doute.
+   */
+  bot_autonomie: "autonome" as "autonome" | "equilibre" | "prudent",
   dashboard_url: "",
   niveau4_message: NIVEAU4_MESSAGE,
   objections: OBJECTIONS_SEED,

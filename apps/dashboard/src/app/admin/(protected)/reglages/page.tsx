@@ -386,6 +386,28 @@ export default async function ReglagesPage({
           </div>
         </div>
         <div>
+          <label className="label">Autonomie du bot</label>
+          <select
+            name="bot_autonomie"
+            defaultValue={core.settings.get("bot_autonomie")}
+            className="input"
+          >
+            <option value="autonome">
+              Autonome — il se débrouille seul, te passe la main rarement (recommandé)
+            </option>
+            <option value="equilibre">
+              Équilibrée — il te passe la main dès qu&apos;il n&apos;est pas sûr
+            </option>
+            <option value="prudent">Prudente — il te passe la main au moindre doute</option>
+          </select>
+          <p className="mt-1 text-xs text-neutral-500">
+            Règle la fréquence du message « je transmets à Jacob ». En mode autonome, le bot ne
+            passe la main que si le client demande un humain, s&apos;il faut un devis ferme ou un
+            paiement, ou si l&apos;information est vraiment introuvable dans le catalogue, la grille
+            et les documents. Il n&apos;invente jamais un prix, quel que soit le réglage.
+          </p>
+        </div>
+        <div>
           <label className="label">Message type — niveau 4 (intervention humaine)</label>
           <textarea
             name="niveau4_message"
