@@ -1,4 +1,5 @@
 import type Anthropic from "@anthropic-ai/sdk";
+import { REASONING_HEADROOM } from "./llm";
 import type { Logger } from "./logger";
 
 /**
@@ -22,7 +23,8 @@ export async function extractClientFacts(
   try {
     const response = await llm.messages.create({
       model,
-      max_tokens: 300,
+      // Marge pour le raisonnement du modèle (cf. REASONING_HEADROOM).
+      max_tokens: REASONING_HEADROOM,
       system: [
         "Tu extrais des faits durables et utiles à la vente à partir d'une conversation commerciale WhatsApp, en français.",
         "Un fait par ligne, phrase courte, sans numérotation ni tiret en tête de ligne.",

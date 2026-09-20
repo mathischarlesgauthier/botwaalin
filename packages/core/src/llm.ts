@@ -113,6 +113,21 @@ function transcriptText(lines: TranscriptLine[], max = 40): string {
     .join("\n");
 }
 
+/**
+ * Kimi k2.6 est un modèle à RAISONNEMENT : il dépense d'abord des tokens de
+ * réflexion, qui sont décomptés de `max_tokens` avant le moindre caractère de
+ * réponse. Mesuré en production sur un résumé de 3 messages : 308 tokens de
+ * raisonnement pour 158 de texte. Avec un plafond à 400, la réponse était donc
+ * TOUJOURS vide (`stop_reason: max_tokens`) et l'appelant retombait sur son
+ * texte de repli — le back-office affichait « Résumé indisponible » en
+ * permanence, sans qu'aucune erreur n'apparaisse nulle part.
+ *
+ * `max_tokens` est un plafond, pas une consommation : le relever ne coûte rien
+ * tant que la réponse reste courte. Garder de la marge est donc gratuit, et
+ * l'inverse casse la fonctionnalité en silence.
+ */
+export const REASONING_HEADROOM = 1500;
+
 export interface QuestionToClassify {
   id: number;
   texte: string;
@@ -178,7 +193,8 @@ export async function classifyQuestionTopics(
     try {
       const response = await client.messages.create({
         model,
-        max_tokens: 1000,
+        // Raisonnement + 25 lignes « id = Sujet » (cf. REASONING_HEADROOM).
+        max_tokens: REASONING_HEADROOM + 1000,
         system: [
           "Tu classes des questions de clients (WhatsApp, entreprise de services) par SUJET général, en français.",
           "Un sujet est un THÈME, pas une question : 2 à 4 mots, sans point d'interrogation, sans référence à un produit ou à un modèle précis.",
@@ -248,7 +264,7 @@ export async function summarizeConversation(
   try {
     const response = await client.messages.create({
       model,
-      max_tokens: 400,
+      max_tokens: REASONING_HEADROOM,
       system:
         "Tu résumes des conversations commerciales WhatsApp en français. Réponds UNIQUEMENT avec le résumé, sans préambule, au format :\nClient : (qui il est, ce qu'on sait)\nDemande : (ce qu'il cherche)\nÉtat : (où en est l'échange, ce qui a été proposé)\nBlocage : (ce qui bloque, ou « aucun »)\nÀ faire : (la prochaine action concrète)",
       messages: [

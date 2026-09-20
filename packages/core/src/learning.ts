@@ -1,5 +1,6 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import type { ExampleRow } from "./db";
+import { REASONING_HEADROOM } from "./llm";
 import type { Logger } from "./logger";
 import { amountsIn, PAYMENT_OUTBOUND_RE } from "./pricing";
 
@@ -90,7 +91,8 @@ export async function reviewExample(
 
   const response = await llm.messages.create({
     model,
-    max_tokens: 450,
+    // Marge pour le raisonnement du modèle (cf. REASONING_HEADROOM).
+    max_tokens: REASONING_HEADROOM,
     system: [
       "Tu prépares un exemple de réponse commerciale WhatsApp en français, pour servir de modèle de TON à un bot de vente.",
       "1) Reformule la question du client en CAS GÉNÉRAL : retire prénom, détail identifiant ou propre à ce client précis.",
@@ -157,7 +159,8 @@ export async function buildStyleGuide(
   try {
     const response = await llm.messages.create({
       model,
-      max_tokens: 400,
+      // Marge pour le raisonnement du modèle (cf. REASONING_HEADROOM).
+      max_tokens: REASONING_HEADROOM,
       system: [
         "Tu observes des messages écrits manuellement par un commercial (Jacob) sur WhatsApp, en français,",
         "et tu en dégages 5 à 10 règles de TON concrètes et actionnables pour un bot qui doit lui ressembler :",
