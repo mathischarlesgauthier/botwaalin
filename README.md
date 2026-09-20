@@ -100,6 +100,15 @@ Le résumé se régénère **tout seul** à l'ouverture d'une conversation dès 
 
 L'onglet « Par sujet » range les questions clients sous un **thème général** — « Tarifs et devis », « Délais de livraison » — au lieu de lister des formulations quasi identiques. Le classement est fait par le LLM, stocké en base (`questions.sujet`) et relancé avec « 🧠 Classer les nouvelles » (incrémental) ou « ♻️ Tout reclasser ». L'onglet « Formulations exactes » conserve l'ancien regroupement par similarité, qui sert aussi de repli si le LLM est indisponible.
 
+## Déployer sur Railway
+
+```bash
+railway up --detach          # depuis la racine du dépôt
+curl https://arbi-jacob-production.up.railway.app/api/version   # vérifier ce qui est RÉELLEMENT en ligne
+```
+
+⚠️ **Ne jamais lancer `railway up` depuis un worktree git** (`.claude/worktrees/…`) : le CLI n'y trouve pas les fichiers, envoie un contexte vide, et le build repart entièrement du cache. Le déploiement s'affiche alors **SUCCESS** avec un healthcheck vert, mais l'image ne contient aucune modification. Deux signaux : un build de ~40 s (un vrai build en prend ~200), et `/api/version` qui ne liste pas la nouveauté attendue. Depuis un worktree, copier d'abord le code dans un dossier normal (`rsync -a --exclude node_modules --exclude .next --exclude dist --exclude .git ./ /tmp/deploy/`) et déployer depuis là.
+
 ## Procédure Meta Business
 
 1. **Vérification de l'entreprise** : business.facebook.com → Centre de sécurité → Vérification (Kbis, 1-5 j). Sans elle : 250 conversations/jour max.
