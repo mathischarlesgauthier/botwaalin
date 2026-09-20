@@ -74,11 +74,9 @@ Si Meta rejette le template, reformule-le dans WhatsApp Manager → Modèles de 
 
 Le back-office ne verrouille **jamais** le champ de réponse : Jacob doit toujours pouvoir reprendre la main. Passé 24 h sans message du client, WhatsApp refuse le texte libre — la réponse tapée bascule alors automatiquement dans le **template de relance**, dont la variable `{{1}}` porte le texte, qui arrive donc intégralement.
 
-```bash
-./scripts/create-relance-template.sh   # crée `relance_client` ({{1}} = message de Jacob)
-```
+La conversation propose en plus des **relances en un clic** dès que la fenêtre est fermée : des messages courts prêts à l'emploi (« Salut, je reviens vers toi… »), envoyés dans la même variable. Ils s'ajoutent et se suppriment dans **Réglages → Relancer un client après 24 h** : on écrit le message, on clique « Ajouter ».
 
-Une fois le template APPROVED, renseigne son nom dans **Dashboard → Réglages → Template de relance client**. Sans template configuré (ou sans variable dans son corps), hors fenêtre l'envoi échoue et le brouillon est conservé dans le champ — c'est une règle Meta, pas une limite du code.
+Mise en place, une seule fois : **Réglages → « ✨ Créer le modèle automatiquement »**. Le modèle `relance_client` est soumis à Meta et enregistré tout seul ; l'approbation prend de quelques minutes à 24 h, et l'état (⚠️ à créer / ⏳ en attente / ✅ prêt) s'affiche en permanence sur la page. Sans modèle approuvé, aucun message ne peut partir hors fenêtre — c'est une règle Meta, pas une limite du code.
 
 ## Back-office : conversation
 
@@ -93,6 +91,10 @@ Limites imposées par WhatsApp, vérifiées avant tout envoi : **photo JPEG/PNG 
 ### Résumé automatique
 
 Le résumé se régénère **tout seul** à l'ouverture d'une conversation dès qu'un message est arrivé depuis le dernier calcul (colonne `conversation_state.resume_message_id`). La page s'affiche immédiatement et le résumé se met à jour en arrière-plan ; le bouton « 🔄 Régénérer » reste disponible pour forcer. Les appels LLM sont bornés à 60 s (avant, un endpoint lent pouvait bloquer une demi-heure sans rien afficher).
+
+### Abonnement
+
+**Facturation** affiche la date du **prochain prélèvement** et le nombre de jours restants, calculés sur la date anniversaire de l'abonnement (même règle que Stripe, jour clampé en fin de mois).
 
 ### Questions par sujet
 

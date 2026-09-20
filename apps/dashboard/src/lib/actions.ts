@@ -52,6 +52,7 @@ import {
   type SiteStep,
 } from "./site/content";
 import { buildSiteData } from "./site/data";
+import { createRelanceTemplate, RELANCE_TEMPLATE_NAME } from "./templates";
 // `slugify` local (clés `a_b`) ≠ slug d'URL du site (`a-b`).
 import { poleSlug, slugify as urlSlug } from "./site/format";
 
@@ -328,6 +329,126 @@ function mediaRedirect(waId: string, message: string): never {
 }
 
 /**
+ * Relance en un clic hors fenêtre 24 h : Jacob choisit un message
+ * pré-enregistré, il part dans la variable du template approuvé. C'est le
+ * chemin normal pour reprendre contact — plus besoin de comprendre ce qu'est
+ * un template.
+ */
+export async function sendQuickRelanceAction(waId: string, index: number): Promise<void> {
+  await requireSession();
+  const { core, wa, log } = getRuntime();
+  const messages = core.settings.get("relance_messages");
+  const texte = (messages[index] ?? "").trim();
+  if (!texte) {
+    mediaRedirect(waId, "⚠️ Ce message de relance n'existe plus — vérifie dans Réglages.");
+  }
+
+  // Si la fenêtre est encore ouverte, un texte libre passe : inutile de
+  // consommer un template payant.
+  const direct = await wa.sendText(waId, texte, { manual: true });
+  if (direct.sent) {
+    recordHumanMessage(core, waId, texte);
+    revalidatePath(`/admin/conversations/${waId}`);
+    redirect(`/admin/conversations/${waId}`);
+  }
+
+  const fallback = await sendViaRelanceTemplate(core, wa, waId, texte);
+  logDecision(log, "quick_relance", { waId, index, fallback: fallback.status });
+  if (fallback.status === "sent_with_text") {
+    recordHumanMessage(core, waId, texte);
+    revalidatePath(`/admin/conversations/${waId}`);
+    redirect(`/admin/conversations/${waId}?msg=${encodeURIComponent("✅ Relance envoyée.")}`);
+  }
+  if (fallback.status === "sent_template_only") {
+    core.messages.insert(waId, "human", "[Relance envoyée — fenêtre 24 h fermée]");
+    core.contacts.setModeHumain(waId, true);
+    revalidatePath(`/admin/conversations/${waId}`);
+    mediaRedirect(
+      waId,
+      "⚠️ La relance est partie, mais sans ton texte : le template n'a pas de variable {{1}}. Recrée-le depuis Réglages.",
+    );
+  }
+  mediaRedirect(
+    waId,
+    fallback.status === "unavailable"
+      ? "⚠️ Aucun template de relance n'est prêt. Va dans Réglages → Relances et clique sur « Créer le template »."
+      : `⚠️ Relance non envoyée (${fallback.reason ?? "raison inconnue"}). Le template doit être APPROVED côté Meta.`,
+  );
+}
+
+/** Longueur d'un message de relance : il doit tenir dans la variable du template. */
+const RELANCE_MESSAGE_MAX = 600;
+const RELANCE_MESSAGES_MAX = 8;
+
+export async function addRelanceMessageAction(formData: FormData): Promise<void> {
+  await requireSession();
+  const { core } = getRuntime();
+  const texte = String(formData.get("message") ?? "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, RELANCE_MESSAGE_MAX);
+  if (!texte) reglagesRedirect("⚠️ Écris d'abord le message.");
+  const messages = core.settings.get("relance_messages");
+  if (messages.length >= RELANCE_MESSAGES_MAX) {
+    reglagesRedirect(`⚠️ Maximum ${RELANCE_MESSAGES_MAX} messages — supprimes-en un d'abord.`);
+  }
+  if (messages.some((m) => m.toLowerCase() === texte.toLowerCase())) {
+    reglagesRedirect("⚠️ Ce message existe déjà.");
+  }
+  core.settings.set("relance_messages", [...messages, texte]);
+  revalidatePath("/admin/reglages");
+  revalidatePath("/admin/conversations", "layout");
+  reglagesRedirect("✅ Message de relance ajouté.");
+}
+
+export async function removeRelanceMessageAction(index: number): Promise<void> {
+  await requireSession();
+  const { core } = getRuntime();
+  const messages = core.settings.get("relance_messages");
+  if (index < 0 || index >= messages.length) reglagesRedirect("⚠️ Message introuvable.");
+  core.settings.set(
+    "relance_messages",
+    messages.filter((_m, i) => i !== index),
+  );
+  revalidatePath("/admin/reglages");
+  revalidatePath("/admin/conversations", "layout");
+  reglagesRedirect("✅ Message supprimé.");
+}
+
+/**
+ * Crée le template de relance chez Meta et l'enregistre comme template actif.
+ * Remplace la saisie manuelle d'un nom qu'il fallait deviner.
+ */
+export async function createRelanceTemplateAction(): Promise<void> {
+  await requireSession();
+  const { core, log } = getRuntime();
+  const result = await createRelanceTemplate();
+  logDecision(log, "relance_template_create", { ok: result.ok, status: result.status });
+  if (!result.ok) {
+    // Déjà créé côté Meta : on adopte le nom au lieu de traiter ça en erreur.
+    if (/already exists/i.test(result.error ?? "")) {
+      core.settings.set("relance_template_name", RELANCE_TEMPLATE_NAME);
+      revalidatePath("/admin/reglages");
+      reglagesRedirect(
+        `✅ Le template « ${RELANCE_TEMPLATE_NAME} » existait déjà chez Meta — il est maintenant utilisé.`,
+      );
+    }
+    reglagesRedirect(`⚠️ Création refusée par Meta : ${result.error ?? "raison inconnue"}`);
+  }
+  core.settings.set("relance_template_name", RELANCE_TEMPLATE_NAME);
+  revalidatePath("/admin/reglages");
+  reglagesRedirect(
+    result.status === "APPROVED"
+      ? "✅ Template créé et approuvé — tes relances partent dès maintenant."
+      : `✅ Template soumis à Meta (statut ${result.status ?? "PENDING"}). L'approbation prend de quelques minutes à 24 h ; les relances fonctionneront ensuite.`,
+  );
+}
+
+function reglagesRedirect(message: string): never {
+  redirect(`/admin/reglages?msg=${encodeURIComponent(message)}`);
+}
+
+/**
  * Capture d'un exemple appris (§6) depuis un envoi manuel réussi : les 3
  * derniers messages `user` avant la réponse, concaténés. N'insère rien si la
  * conversation n'a aucun message client avant (repo.capture le garantit déjà
@@ -409,36 +530,6 @@ export async function markAlertTreatedAction(alertId: number, waId: string): Pro
   revalidatePath(`/admin/conversations/${waId}`);
   revalidatePath("/admin/conversations");
   revalidatePath("/admin");
-}
-
-/**
- * Relance client hors fenêtre 24 h (§4.5) : seul canal autorisé est un
- * template approuvé. N'appelle JAMAIS `captureLearnedExample` : un template
- * figé n'est pas une réponse de Jacob à un message client récent — le
- * capturer polluerait les exemples appris (risque documenté en revue).
- */
-export async function sendRelanceTemplateAction(waId: string): Promise<void> {
-  await requireSession();
-  const { core, wa, log } = getRuntime();
-  const templateName = core.settings.get("relance_template_name").trim();
-  if (!templateName) {
-    redirect(
-      `/admin/conversations/${waId}?msg=${encodeURIComponent("⚠️ Aucun template de relance configuré — Réglages → Templates WhatsApp.")}`,
-    );
-  }
-  const contact = core.contacts.get(waId);
-  const lang = contact?.langue || "fr";
-  const result = await wa.sendTemplate(waId, templateName, lang);
-  if (result.sent) {
-    core.messages.insert(waId, "human", `[Template de relance envoyé : ${templateName}]`);
-    logDecision(log, "relance_template_sent", { waId, templateName, lang });
-    revalidatePath(`/admin/conversations/${waId}`);
-    redirect(`/admin/conversations/${waId}?msg=${encodeURIComponent(`✅ Template « ${templateName} » envoyé.`)}`);
-  }
-  logDecision(log, "relance_template_failed", { waId, templateName, reason: result.reason });
-  redirect(
-    `/admin/conversations/${waId}?msg=${encodeURIComponent(`⚠️ Échec de l'envoi du template : ${result.reason ?? "inconnu"}.`)}`,
-  );
 }
 
 // ── Mémoire client (§5) ──

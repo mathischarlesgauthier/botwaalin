@@ -1,7 +1,10 @@
 import type { AdminNumber } from "@arbi/core";
 import {
   addAdminNumberAction,
+  addRelanceMessageAction,
+  createRelanceTemplateAction,
   removeAdminNumberAction,
+  removeRelanceMessageAction,
   saveGeneralSettingsAction,
   saveTemplateSettingsAction,
   testAdminNumberAction,
@@ -28,10 +31,18 @@ export default async function ReglagesPage({
   const alertTemplateName = core.settings.get("alert_template_name");
   const alertTemplateLang = core.settings.get("alert_template_lang");
   const relanceTemplateName = core.settings.get("relance_template_name");
-  const templateCheck = check === "1" ? await checkWhatsAppTemplates() : null;
-  const alertWarning = templateCheck?.ok
+  const relanceMessages = core.settings.get("relance_messages");
+  // Interrogé à chaque affichage (et non plus seulement sur clic) : l'état des
+  // relances doit se lire d'un coup d'œil, sans savoir qu'il faut vérifier.
+  // `check=1` garde son sens : forcer un rafraîchissement manuel.
+  const templateCheck = await checkWhatsAppTemplates();
+  const alertWarning = templateCheck.ok
     ? templateLanguageWarning(templateCheck.templates, alertTemplateName, alertTemplateLang)
     : null;
+  const relanceReady =
+    templateCheck.ok &&
+    relanceTemplateName.length > 0 &&
+    templateCheck.templates.some((t) => t.name === relanceTemplateName && t.status === "APPROVED");
 
   return (
     <div className="space-y-6">
@@ -123,105 +134,182 @@ export default async function ReglagesPage({
         )}
       </div>
 
-      <div className="card space-y-3">
-        <h2 className="font-semibold">Templates WhatsApp</h2>
-        <p className="text-sm text-neutral-500">
-          Hors fenêtre de service 24 h (§4), seul un template approuvé par Meta peut atteindre un
-          client. Ces réglages pilotent les alertes admin et la relance client.
-        </p>
-        <form action={saveTemplateSettingsAction} className="grid gap-3 md:grid-cols-3">
-          <div>
-            <label className="label">Template d&apos;alerte admin</label>
-            <input
-              name="alert_template_name"
-              defaultValue={alertTemplateName}
-              className="input"
-              placeholder="alerte_admin"
-            />
-          </div>
-          <div>
-            <label className="label">Langue du template d&apos;alerte</label>
-            <input
-              name="alert_template_lang"
-              defaultValue={alertTemplateLang}
-              className="input"
-              placeholder="fr"
-            />
-          </div>
-          <div>
-            <label className="label">Template de relance client (hors fenêtre 24 h)</label>
-            <input
-              name="relance_template_name"
-              defaultValue={relanceTemplateName}
-              className="input"
-              placeholder="vide = aucun repli hors fenêtre 24 h"
-            />
-            <p className="mt-1 text-xs text-neutral-500">
-              Passé 24 h sans message du client, WhatsApp refuse le texte libre. Avec un template
-              approuvé contenant une variable {"{{1}}"} dans le corps, tes réponses du back-office
-              sont envoyées dedans et arrivent quand même.
-            </p>
-          </div>
-          <div className="md:col-span-3">
-            <button className="btn btn-primary" type="submit">
-              💾 Enregistrer les templates
-            </button>
-          </div>
-        </form>
+      <div className="card space-y-4">
+        <div>
+          <h2 className="font-semibold">Relancer un client après 24 h</h2>
+          <p className="mt-1 text-sm text-neutral-500">
+            Passé 24 h sans message du client, WhatsApp n&apos;accepte plus de texte libre. Ces
+            messages s&apos;affichent alors en un clic dans la conversation — tu choisis, ça part.
+          </p>
+        </div>
 
-        <form action="/admin/reglages" className="flex items-center gap-2 border-t border-neutral-100 pt-3">
-          <input type="hidden" name="check" value="1" />
-          <button className="btn btn-secondary" type="submit">
-            🔍 Vérifier mes templates WhatsApp
-          </button>
-          {templateCheck && !templateCheck.ok && (
-            <span className="text-sm text-red-600">{templateCheck.error}</span>
-          )}
-        </form>
-
-        {templateCheck?.ok && (
-          <div className="space-y-2">
-            {alertWarning && (
-              <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                {alertWarning}
-              </div>
-            )}
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-100 text-sm">
-                <thead className="text-left text-xs uppercase text-neutral-400">
-                  <tr>
-                    <th className="py-1 pr-4 font-medium">Nom</th>
-                    <th className="py-1 pr-4 font-medium">Langue</th>
-                    <th className="py-1 font-medium">Statut</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {templateCheck.templates.map((t, i) => (
-                    <tr key={`${t.name}-${t.language}-${i}`} className="border-t border-neutral-100">
-                      <td className="py-1 pr-4 font-mono">{t.name}</td>
-                      <td className="py-1 pr-4">{t.language}</td>
-                      <td className="py-1">
-                        <span
-                          className={`badge ${t.status === "APPROVED" ? "badge-bot" : "badge-neutre"}`}
-                        >
-                          {t.status}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                  {templateCheck.templates.length === 0 && (
-                    <tr>
-                      <td colSpan={3} className="py-4 text-center text-neutral-400">
-                        Aucun template trouvé pour ce compte WhatsApp Business.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
+        <div className="space-y-2">
+          {relanceMessages.map((message, i) => (
+            <div
+              key={i}
+              className="flex items-center justify-between gap-3 rounded-lg border border-neutral-200 px-3 py-2"
+            >
+              <span className="text-sm text-neutral-800">{message}</span>
+              <form action={removeRelanceMessageAction.bind(null, i)}>
+                <button
+                  type="submit"
+                  className="shrink-0 text-xs text-neutral-400 hover:text-red-600"
+                  title="Supprimer ce message"
+                >
+                  ✕ Supprimer
+                </button>
+              </form>
             </div>
-          </div>
-        )}
+          ))}
+          {relanceMessages.length === 0 && (
+            <p className="text-sm text-neutral-400">
+              Aucun message pour l&apos;instant — ajoute le premier ci-dessous.
+            </p>
+          )}
+        </div>
+
+        <form action={addRelanceMessageAction} className="flex flex-col gap-2 sm:flex-row">
+          <input
+            name="message"
+            className="input flex-1"
+            placeholder="Écris un message de relance, ex. : Salut, je reviens vers toi…"
+            autoComplete="off"
+            required
+          />
+          <button className="btn btn-primary shrink-0" type="submit">
+            ➕ Ajouter
+          </button>
+        </form>
+
+        <div className="rounded-lg bg-neutral-50 px-3 py-2 text-xs">
+          {relanceReady ? (
+            <span className="text-green-700">
+              ✅ Tout est prêt : tes relances partent immédiatement.
+            </span>
+          ) : relanceTemplateName ? (
+            <span className="text-amber-700">
+              ⏳ Le modèle « {relanceTemplateName} » attend l&apos;approbation de Meta (de quelques
+              minutes à 24 h). Les relances fonctionneront dès qu&apos;il sera approuvé.
+            </span>
+          ) : (
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="text-amber-700">
+                ⚠️ Dernière étape : WhatsApp exige un modèle approuvé pour écrire après 24 h.
+              </span>
+              <form action={createRelanceTemplateAction}>
+                <button className="btn btn-primary" type="submit">
+                  ✨ Créer le modèle automatiquement
+                </button>
+              </form>
+            </div>
+          )}
+        </div>
       </div>
+
+      <details className="card">
+        <summary className="cursor-pointer font-semibold">
+          Réglages techniques WhatsApp (avancé)
+        </summary>
+        <div className="mt-3 space-y-3">
+          <p className="text-sm text-neutral-500">
+            Noms des modèles déclarés chez Meta. À ne toucher que si tu sais ce que tu fais — les
+            relances se gèrent au-dessus.
+          </p>
+          <form action={saveTemplateSettingsAction} className="grid gap-3 md:grid-cols-3">
+            <div>
+              <label className="label">Template d&apos;alerte admin</label>
+              <input
+                name="alert_template_name"
+                defaultValue={alertTemplateName}
+                className="input"
+                placeholder="alerte_admin"
+              />
+            </div>
+            <div>
+              <label className="label">Langue du template d&apos;alerte</label>
+              <input
+                name="alert_template_lang"
+                defaultValue={alertTemplateLang}
+                className="input"
+                placeholder="fr"
+              />
+            </div>
+            <div>
+              <label className="label">Template de relance client</label>
+              <input
+                name="relance_template_name"
+                defaultValue={relanceTemplateName}
+                className="input"
+                placeholder="créé automatiquement ci-dessus"
+              />
+            </div>
+            <div className="md:col-span-3">
+              <button className="btn btn-secondary" type="submit">
+                💾 Enregistrer les templates
+              </button>
+            </div>
+          </form>
+
+          <form
+            action="/admin/reglages"
+            className="flex items-center gap-2 border-t border-neutral-100 pt-3"
+          >
+            <input type="hidden" name="check" value="1" />
+            <button className="btn btn-secondary" type="submit">
+              🔍 Vérifier mes templates WhatsApp
+            </button>
+            {templateCheck && !templateCheck.ok && (
+              <span className="text-sm text-red-600">{templateCheck.error}</span>
+            )}
+          </form>
+
+          {templateCheck?.ok && (
+            <div className="space-y-2">
+              {alertWarning && (
+                <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                  {alertWarning}
+                </div>
+              )}
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-100 text-sm">
+                  <thead className="text-left text-xs uppercase text-neutral-400">
+                    <tr>
+                      <th className="py-1 pr-4 font-medium">Nom</th>
+                      <th className="py-1 pr-4 font-medium">Langue</th>
+                      <th className="py-1 font-medium">Statut</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {templateCheck.templates.map((t, i) => (
+                      <tr
+                        key={`${t.name}-${t.language}-${i}`}
+                        className="border-t border-neutral-100"
+                      >
+                        <td className="py-1 pr-4 font-mono">{t.name}</td>
+                        <td className="py-1 pr-4">{t.language}</td>
+                        <td className="py-1">
+                          <span
+                            className={`badge ${t.status === "APPROVED" ? "badge-bot" : "badge-neutre"}`}
+                          >
+                            {t.status}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                    {templateCheck.templates.length === 0 && (
+                      <tr>
+                        <td colSpan={3} className="py-4 text-center text-neutral-400">
+                          Aucun template trouvé pour ce compte WhatsApp Business.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      </details>
 
       <form action={saveGeneralSettingsAction} className="card space-y-3">
         <h2 className="font-semibold">Paramètres généraux</h2>

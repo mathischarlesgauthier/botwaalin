@@ -17,7 +17,7 @@ import {
   removeFactAction,
   sendHumanMediaAction,
   sendHumanMessageAction,
-  sendRelanceTemplateAction,
+  sendQuickRelanceAction,
   takeOverAction,
   toggleFactAction,
 } from "@/lib/actions";
@@ -69,6 +69,7 @@ export default async function ConversationDetailPage({
 
   const windowState = serviceWindow(core.messages.lastInboundTs(waId), Date.now());
   const relanceTemplate = core.settings.get("relance_template_name").trim();
+  const relanceMessages = core.settings.get("relance_messages");
   // Seul l'opt-out (STOP) bloque encore : écrire à un désabonné met en danger
   // le numéro WhatsApp, et Meta refuse l'envoi de toute façon.
   const sendDisabled = contact.optOut === 1;
@@ -336,22 +337,39 @@ export default async function ConversationDetailPage({
               </div>
             )}
             {contact.optOut !== 1 && !windowState.open && (
-              <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-neutral-50 p-2 text-xs text-neutral-600">
-                <span>
-                  {relanceTemplate
-                    ? `Fenêtre 24 h fermée : ton message part quand même — via le template « ${relanceTemplate} », qui le porte s'il a une variable {{1}}.`
-                    : "Fenêtre 24 h fermée : WhatsApp refusera le texte libre. Configure un template de relance avec une variable {{1}} pour que tes messages passent quand même."}
-                </span>
-                {relanceTemplate ? (
-                  <form action={sendRelanceTemplateAction.bind(null, waId)}>
-                    <button className="btn btn-secondary" type="submit">
-                      🔁 Relancer avec le template seul
-                    </button>
-                  </form>
+              <div className="space-y-2 rounded-lg bg-neutral-50 p-3">
+                <div className="text-xs text-neutral-600">
+                  <strong>Plus de 24 h sans réponse du client.</strong> WhatsApp n&apos;accepte plus
+                  de texte libre — choisis une relance ci-dessous, elle partira tout de suite et
+                  rouvrira la conversation.
+                </div>
+                {relanceMessages.length > 0 ? (
+                  <div className="flex flex-wrap gap-2">
+                    {relanceMessages.map((message, i) => (
+                      <form key={i} action={sendQuickRelanceAction.bind(null, waId, i)}>
+                        <button
+                          className="rounded-full border border-neutral-300 bg-white px-3 py-1.5 text-left text-xs text-neutral-700 hover:border-neutral-900 hover:bg-neutral-900 hover:text-white"
+                          type="submit"
+                          title="Envoyer cette relance"
+                        >
+                          {message}
+                        </button>
+                      </form>
+                    ))}
+                  </div>
                 ) : (
-                  <Link href="/admin/reglages" className="text-neutral-500 underline">
-                    Configurer un template de relance dans Réglages →
+                  <Link href="/admin/reglages" className="text-xs text-neutral-500 underline">
+                    Aucun message de relance — en ajouter dans Réglages →
                   </Link>
+                )}
+                {!relanceTemplate && (
+                  <div className="text-xs text-amber-700">
+                    ⚠️ Le template de relance n&apos;est pas encore prêt :{" "}
+                    <Link href="/admin/reglages" className="underline">
+                      un clic dans Réglages le crée
+                    </Link>
+                    .
+                  </div>
                 )}
               </div>
             )}

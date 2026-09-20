@@ -92,6 +92,18 @@ export const SETTINGS_DEFAULTS = {
   alert_email_to: "",
   /** Template de relance client hors fenêtre 24 h. Vide = bouton de relance absent. */
   relance_template_name: "",
+  /**
+   * Messages de relance prêts à l'emploi, proposés en un clic dans la
+   * conversation quand la fenêtre 24 h est fermée. Ils partent dans la
+   * variable {{1}} du template approuvé : c'est le seul moyen de délivrer un
+   * texte libre hors fenêtre.
+   */
+  relance_messages: [
+    "Salut, comment tu vas ?",
+    "Salut, je reviens vers toi par rapport à notre conversation.",
+    "Salut, est-ce que tu as pu regarder de ton côté ?",
+    "Salut, je reste dispo si tu veux qu'on avance sur ton projet.",
+  ] as string[],
   /** Guide de style appris, régénérable depuis le back-office (§6), injecté après « Personnalité ». */
   style_guide_appris: "",
   /**

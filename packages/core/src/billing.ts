@@ -65,6 +65,33 @@ function echeance(startTs: number, k: number): number {
   );
 }
 
+export interface NextBilling {
+  /** Date du prochain prélèvement (timestamp ms). */
+  at: number;
+  /** Jours entiers restants avant ce prélèvement (0 = aujourd'hui). */
+  daysLeft: number;
+}
+
+/**
+ * Prochaine échéance d'abonnement : la première date anniversaire encore à
+ * venir. Même calcul que `ensureMonthlyDebits`, donc toujours aligné sur le
+ * renouvellement Stripe. `null` si la facturation n'a jamais été initialisée.
+ */
+export function nextBillingDate(core: Core, now: number = Date.now()): NextBilling | null {
+  const raw = core.settings.getRaw("billing_start");
+  if (raw === null) return null;
+  const start = Number(raw);
+  if (!Number.isFinite(start)) return null;
+  // Même garde-fou que ensureMonthlyDebits : 10 ans de rattrapage au plus.
+  for (let k = 0; k < 120; k++) {
+    const due = echeance(start, k);
+    if (due > now) {
+      return { at: due, daysLeft: Math.max(0, Math.ceil((due - now) / DAY_MS)) };
+    }
+  }
+  return null;
+}
+
 /** Crédit de bienvenue unique (premier mois inclus dans le prix). */
 export function initBilling(core: Core, now: number = Date.now()): void {
   core.sqlite

@@ -3,6 +3,7 @@ import {
   apiUsageSince,
   billingStatus,
   listTransactions,
+  nextBillingDate,
   SUBSCRIPTION_CENTS,
 } from "@arbi/core";
 import { checkStripePaymentsAction } from "@/lib/actions";
@@ -39,6 +40,7 @@ export default async function FacturationPage({
   const { msg } = await searchParams;
 
   const billing = billingStatus(core);
+  const prochain = nextBillingDate(core);
   const paymentLink = core.settings.get("stripe_payment_link_url");
   const monthStart = new Date();
   monthStart.setDate(1);
@@ -117,15 +119,36 @@ export default async function FacturationPage({
         </div>
         <div className="card flex flex-col justify-between gap-3">
           <div>
-            <div className="label">Paiement</div>
-            <div className="text-sm text-neutral-600">
-              Abonnement mensuel de {euros(SUBSCRIPTION_CENTS)}, paiement sécurisé par Stripe.
-            </div>
+            <div className="label">Prochain paiement</div>
+            {prochain ? (
+              <>
+                <div className="text-3xl font-bold">{dateFr(prochain.at)}</div>
+                <div
+                  className={`text-sm font-medium ${
+                    prochain.daysLeft <= 3 ? "text-amber-600" : "text-neutral-600"
+                  }`}
+                >
+                  {prochain.daysLeft === 0
+                    ? "C'est aujourd'hui"
+                    : prochain.daysLeft === 1
+                      ? "Dans 1 jour"
+                      : `Dans ${prochain.daysLeft} jours`}
+                </div>
+                <div className="mt-1 text-xs text-neutral-500">
+                  {euros(SUBSCRIPTION_CENTS)} par mois, prélevés par Stripe.
+                </div>
+              </>
+            ) : (
+              <div className="text-sm text-neutral-600">
+                Abonnement mensuel de {euros(SUBSCRIPTION_CENTS)}, paiement sécurisé par Stripe.
+              </div>
+            )}
           </div>
           <div className="flex flex-col gap-2">
             {subscriptionRunning ? (
               <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-2 text-sm text-green-900">
-                ✅ Abonnement en place — prélèvement automatique chaque mois. Inutile de repayer.
+                ✅ Abonnement en place — prélèvement automatique
+                {prochain ? ` le ${dateFr(prochain.at)}` : " chaque mois"}. Inutile de repayer.
               </div>
             ) : paymentLink ? (
               <>
