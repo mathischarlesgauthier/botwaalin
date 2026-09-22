@@ -106,6 +106,8 @@ Le réglage ne touche aucun garde-fou : quel que soit le niveau, les prix vienne
 
 **Facturation** affiche la date du **prochain prélèvement** et le nombre de jours restants, calculés sur la date anniversaire de l'abonnement (même règle que Stripe, jour clampé en fin de mois).
 
+Le débit mensuel de 50 € fait passer le solde en négatif jusqu'au paiement : c'est normal, mais le client dispose alors de **7 jours** (`GRACE_DAYS`) pour régler, sinon le service est suspendu. Tant que le solde est négatif, un **bandeau s'affiche sur toutes les pages du back-office** avec le solde, les jours restants, la date de coupure et le bouton de paiement Stripe. Il devient rouge une fois le service suspendu.
+
 ### Questions par sujet
 
 L'onglet « Par sujet » range les questions clients sous un **thème général** — « Tarifs et devis », « Délais de livraison » — au lieu de lister des formulations quasi identiques. Le classement est fait par le LLM, stocké en base (`questions.sujet`) et relancé avec « 🧠 Classer les nouvelles » (incrémental) ou « ♻️ Tout reclasser ». L'onglet « Formulations exactes » conserve l'ancien regroupement par similarité, qui sert aussi de repli si le LLM est indisponible.

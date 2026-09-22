@@ -3,6 +3,7 @@ import { billingStatus } from "@arbi/core";
 import { logoutAction } from "@/lib/actions";
 import { requireSession } from "@/lib/auth";
 import { getRuntime } from "@/lib/core";
+import { BillingBanner } from "./billing-banner";
 
 export const dynamic = "force-dynamic";
 
@@ -25,7 +26,8 @@ export default async function ProtectedLayout({ children }: { children: React.Re
   const openAlerts = core.alerts.countOpen();
   const botActif = core.settings.get("bot_actif");
   const billing = billingStatus(core);
-  const billingWarn = !billing.active || billing.balanceCents <= 0;
+  const billingWarn = !billing.active || billing.balanceCents < 0;
+  const paymentLink = core.settings.get("stripe_payment_link_url");
 
   return (
     <div className="flex min-h-screen flex-col md:flex-row">
@@ -78,7 +80,10 @@ export default async function ProtectedLayout({ children }: { children: React.Re
           </form>
         </div>
       </aside>
-      <main className="flex-1 p-4 md:p-6">{children}</main>
+      <main className="flex-1 p-4 md:p-6">
+        <BillingBanner billing={billing} paymentLink={paymentLink} />
+        {children}
+      </main>
     </div>
   );
 }

@@ -2,6 +2,7 @@ import {
   apiUsageByDay,
   apiUsageSince,
   billingStatus,
+  GRACE_DAYS,
   listTransactions,
   nextBillingDate,
   SUBSCRIPTION_CENTS,
@@ -63,7 +64,7 @@ export default async function FacturationPage({
       ? {
           classes: "border-amber-300 bg-amber-50 text-amber-900",
           title: "⚠️ Paiement en attente",
-          detail: `Le service sera suspendu le ${dateFr(billing.cutAt)} si le paiement n'est pas reçu d'ici là.`,
+          detail: `Tu as ${GRACE_DAYS} jours pour régler après chaque débit mensuel : sans paiement reçu, le service sera suspendu le ${dateFr(billing.cutAt)}.`,
         }
       : {
           classes: "border-green-300 bg-green-50 text-green-900",
@@ -107,6 +108,14 @@ export default async function FacturationPage({
           </div>
           <div className="text-xs text-neutral-500">
             Abonnement {euros(SUBSCRIPTION_CENTS)}/mois + coût API. Le premier mois est inclus.
+            {billing.balanceCents < 0 && (
+              <>
+                {" "}
+                <strong className="text-amber-700">
+                  Un solde négatif se règle sous {GRACE_DAYS} jours, sinon le service est coupé.
+                </strong>
+              </>
+            )}
           </div>
         </div>
         <div className="card">

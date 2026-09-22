@@ -9,7 +9,12 @@ import { logDecision } from "./logger";
  */
 
 export const SUBSCRIPTION_CENTS = 5000; // 50 €/mois
-export const GRACE_DAYS = 10; // délai de paiement après le débit mensuel
+/**
+ * Délai de paiement après le débit mensuel. Passé ce délai sans règlement, le
+ * service est coupé. Affiché partout dans le back-office (bandeau) : le client
+ * doit toujours savoir combien de jours il lui reste.
+ */
+export const GRACE_DAYS = 7;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 export interface BillingTransactionRow {
@@ -108,7 +113,7 @@ export function initBilling(core: Core, now: number = Date.now()): void {
 /**
  * Pose (idempotent) le débit d'abonnement de chaque échéance anniversaire
  * atteinte. Les débits sont horodatés à leur date de POSE effective (pas
- * antidatés) : la grâce de 10 jours court toujours à partir d'un moment où la
+ * antidatés) : la grâce court toujours à partir d'un moment où la
  * dette est réellement visible dans le grand livre, même après une longue
  * indisponibilité du serveur. Un billing_start dans le futur ne pose rien.
  */
@@ -156,9 +161,9 @@ export function balanceCents(core: Core): number {
 /**
  * Statut du service, par décomposition du solde selon la cause :
  * - les crédits (bienvenue, paiements, ajustements) couvrent d'abord les
- *   abonnements ; un abonnement non couvert → grâce de 10 jours à partir de la
- *   pose du plus ancien débit non couvert, puis coupure. Un paiement mensuel
- *   régulier ne peut donc jamais laisser le service coupé.
+ *   abonnements ; un abonnement non couvert → grâce de GRACE_DAYS jours à
+ *   partir de la pose du plus ancien débit non couvert, puis coupure. Un
+ *   paiement mensuel régulier ne peut donc jamais laisser le service coupé.
  * - la consommation API non couverte par l'excédent de crédits est tolérée
  *   jusqu'à 50 € (elle est ajoutée à la facture Stripe suivante) ; au-delà,
  *   coupure immédiate (le crédit est épuisé par le LLM).

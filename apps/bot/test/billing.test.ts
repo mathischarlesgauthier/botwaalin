@@ -107,7 +107,13 @@ describe("consommation API facturée", () => {
 });
 
 describe("statut du service (coupures)", () => {
-  it("abonnement impayé → 10 jours de grâce puis coupure", () => {
+  it("le délai de paiement est de 7 jours (affiché au client dans tout le back-office)", () => {
+    // Valeur verrouillée : le bandeau de paiement et la page Abonnement
+    // promettent ce délai au client, la règle métier doit y correspondre.
+    expect(GRACE_DAYS).toBe(7);
+  });
+
+  it("abonnement impayé → 7 jours de grâce puis coupure", () => {
     const core = testCore();
     initBilling(core, T0);
     ensureMonthlyDebits(core, T0); // janvier, couvert par le crédit de bienvenue
@@ -132,7 +138,7 @@ describe("statut du service (coupures)", () => {
     ensureMonthlyDebits(core, boot); // février + mars posés maintenant
 
     const atBoot = billingStatus(core, boot + DAY);
-    expect(atBoot.active).toBe(true); // 10 jours pleins de grâce après le boot
+    expect(atBoot.active).toBe(true); // délai de grâce plein après le boot
     expect(atBoot.reason).toBe("abonnement_impaye");
     expect(atBoot.cutAt).toBe(boot + GRACE_DAYS * DAY);
     expect(billingStatus(core, boot + (GRACE_DAYS + 1) * DAY).active).toBe(false);
