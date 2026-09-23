@@ -106,7 +106,9 @@ Le réglage ne touche aucun garde-fou : quel que soit le niveau, les prix vienne
 
 **Facturation** affiche la date du **prochain prélèvement** et le nombre de jours restants, calculés sur la date anniversaire de l'abonnement (même règle que Stripe, jour clampé en fin de mois).
 
-Le débit mensuel de 50 € fait passer le solde en négatif jusqu'au paiement : c'est normal, mais le client dispose alors de **7 jours** (`GRACE_DAYS`) pour régler, sinon le service est suspendu. Tant que le solde est négatif, un **bandeau s'affiche sur toutes les pages du back-office** avec le solde, les jours restants, la date de coupure et le bouton de paiement Stripe. Il devient rouge une fois le service suspendu.
+**Règle unique : tout solde négatif ouvre 7 jours (`GRACE_DAYS`) pour régulariser, sinon le service est coupé** — sans distinction entre un abonnement impayé et une dette de consommation API. Le compte à rebours part du moment où le solde est réellement passé sous zéro (`negativeSince`, rejoué depuis les mouvements), il décroît donc jour après jour ; un retour à l'équilibre le remet à zéro.
+
+Tant que le solde est négatif, un **bandeau s'affiche sur toutes les pages du back-office** : solde, jours restants, date exacte de coupure et bouton de paiement Stripe. Il devient rouge une fois le service suspendu.
 
 ### Questions par sujet
 

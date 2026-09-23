@@ -60,11 +60,11 @@ export default async function FacturationPage({
   const subscriptionRunning = lastPaymentTs > 0 && Date.now() - lastPaymentTs < 35 * 24 * 60 * 60 * 1000;
 
   const statusBox = billing.active
-    ? billing.reason === "abonnement_impaye" && billing.cutAt
+    ? billing.cutAt
       ? {
           classes: "border-amber-300 bg-amber-50 text-amber-900",
           title: "⚠️ Paiement en attente",
-          detail: `Tu as ${GRACE_DAYS} jours pour régler après chaque débit mensuel : sans paiement reçu, le service sera suspendu le ${dateFr(billing.cutAt)}.`,
+          detail: `Tout solde négatif se régularise sous ${GRACE_DAYS} jours : sans paiement reçu, le service sera suspendu le ${dateFr(billing.cutAt)}.`,
         }
       : {
           classes: "border-green-300 bg-green-50 text-green-900",
@@ -112,7 +112,8 @@ export default async function FacturationPage({
               <>
                 {" "}
                 <strong className="text-amber-700">
-                  Un solde négatif se règle sous {GRACE_DAYS} jours, sinon le service est coupé.
+                  Dès que le solde est négatif, tu as {GRACE_DAYS} jours pour le régulariser, sinon
+                  le service est coupé.
                 </strong>
               </>
             )}

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { billingStatus, nextBillingDate } from "@arbi/core";
+import { billingStatus } from "@arbi/core";
 import { logoutAction } from "@/lib/actions";
 import { requireSession } from "@/lib/auth";
 import { getRuntime } from "@/lib/core";
@@ -81,11 +81,7 @@ export default async function ProtectedLayout({ children }: { children: React.Re
         </div>
       </aside>
       <main className="flex-1 p-4 md:p-6">
-        <BillingBanner
-          billing={billing}
-          paymentLink={paymentLink}
-          prochainPaiement={nextBillingDate(core)?.at ?? null}
-        />
+        <BillingBanner billing={billing} paymentLink={paymentLink} />
         {children}
       </main>
     </div>

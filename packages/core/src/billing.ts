@@ -159,6 +159,39 @@ export function balanceCents(core: Core): number {
 }
 
 /**
+ * Instant où le solde est passé sous zéro pour la dernière fois, en rejouant
+ * dans l'ordre tous les mouvements (crédits, abonnements, consommation API).
+ * `null` si le solde n'est pas négatif.
+ *
+ * Dérivé des données, donc stable : deux appels à des instants différents
+ * renvoient la même date tant qu'aucun mouvement n'a eu lieu — c'est ce qui
+ * fait décroître le compte à rebours affiché au client.
+ */
+export function negativeSince(core: Core): number | null {
+  const rows = core.sqlite
+    .prepare(
+      `SELECT ts, SUM(delta) AS delta FROM (
+         SELECT created_at AS ts, montant_cents AS delta FROM billing_transactions
+         UNION ALL
+         SELECT created_at AS ts, -billed_centimes AS delta FROM llm_usage
+       ) GROUP BY ts ORDER BY ts`,
+    )
+    .all() as Array<{ ts: number; delta: number }>;
+
+  let cumul = 0;
+  let depuis: number | null = null;
+  for (const row of rows) {
+    const avant = cumul;
+    cumul = Math.round((cumul + row.delta) * 1000) / 1000;
+    // Franchissement vers le négatif : on mémorise. Retour à l'équilibre : on
+    // oublie, le client est reparti d'une ardoise nette.
+    if (avant >= 0 && cumul < 0) depuis = row.ts;
+    else if (cumul >= 0) depuis = null;
+  }
+  return cumul < 0 ? depuis : null;
+}
+
+/**
  * Statut du service, par décomposition du solde selon la cause :
  * - les crédits (bienvenue, paiements, ajustements) couvrent d'abord les
  *   abonnements ; un abonnement non couvert → grâce de GRACE_DAYS jours à
@@ -193,23 +226,20 @@ export function billingStatus(core: Core, now: number = Date.now()): BillingStat
     return { balanceCents: balance, active: false, reason: "credit_api_epuise", cutAt: null };
   }
 
-  // Abonnements non couverts : grâce depuis la pose du plus ancien débit impayé.
-  if (subTotal > credits) {
-    let covered = credits;
-    // Ancré sur une date de POSE, jamais sur `now` : une échéance calculée à
-    // partir de l'instant présent recule d'une journée chaque jour, et le
-    // client voit un compte à rebours éternellement bloqué sur GRACE_DAYS.
-    // Repli sur le dernier débit connu, qui existe forcément ici (subTotal > 0
-    // implique au moins une ligne d'abonnement).
-    let cutAt = (debits[debits.length - 1]?.created_at ?? now) + GRACE_DAYS * DAY_MS;
-    for (const debit of debits) {
-      covered += debit.amount;
-      if (covered < 0) {
-        cutAt = debit.created_at + GRACE_DAYS * DAY_MS;
-        break;
-      }
-    }
-    return { balanceCents: balance, active: now < cutAt, reason: "abonnement_impaye", cutAt };
+  // Règle unique : tout solde négatif ouvre un délai de GRACE_DAYS jours, quelle
+  // qu'en soit la cause (abonnement impayé ou consommation API). Passé ce
+  // délai sans régularisation, le service est coupé. Le compte à rebours part
+  // du moment où le solde est REELLEMENT passé sous zéro, pas de `now` : sinon
+  // il resterait bloqué sur GRACE_DAYS jour après jour.
+  if (balance < 0) {
+    const depuis = negativeSince(core) ?? now;
+    const cutAt = depuis + GRACE_DAYS * DAY_MS;
+    return {
+      balanceCents: balance,
+      active: now < cutAt,
+      reason: subTotal > credits ? "abonnement_impaye" : "solde_negatif",
+      cutAt,
+    };
   }
 
   return { balanceCents: balance, active: true, reason: "ok", cutAt: null };

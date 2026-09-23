@@ -169,7 +169,7 @@ describe("statut du service (coupures)", () => {
     expect(billingStatus(core, boot + (GRACE_DAYS + 1) * DAY).active).toBe(false);
   });
 
-  it("client qui paie chaque mois et consomme l'API : jamais coupé", () => {
+  it("client dont les factures couvrent abonnement + conso API : jamais coupé", () => {
     const core = testCore();
     const start = Date.UTC(2026, 0, 20);
     initBilling(core, start);
@@ -179,22 +179,25 @@ describe("statut du service (coupures)", () => {
       { model: "m", inputTokens: 1, outputTokens: 1, costCentimes: 100, billedCentimes: 400 },
       Date.UTC(2026, 1, 10),
     );
-    const pay = (ts: number) =>
+    // La facture Stripe reporte la conso API du mois (pushUsageToStripe) : le
+    // paiement couvre donc l'abonnement ET la consommation, et le solde
+    // repasse à zéro à chaque échéance.
+    const pay = (ts: number, montant: number) =>
       core.sqlite
         .prepare(
           `INSERT INTO billing_transactions (type, montant_cents, description, ref, created_at)
            VALUES ('paiement', ?, 'Paiement abonnement (Stripe)', ?, ?)`,
         )
-        .run(SUBSCRIPTION_CENTS, `stripe:in_${ts}`, ts);
+        .run(montant, `stripe:in_${ts}`, ts);
     ensureMonthlyDebits(core, Date.UTC(2026, 1, 20));
-    pay(Date.UTC(2026, 1, 20));
+    pay(Date.UTC(2026, 1, 20), SUBSCRIPTION_CENTS + 400); // 50 € + les 4 € d'API
     ensureMonthlyDebits(core, Date.UTC(2026, 2, 20));
-    pay(Date.UTC(2026, 2, 20));
+    pay(Date.UTC(2026, 2, 20), SUBSCRIPTION_CENTS);
 
     const status = billingStatus(core, Date.UTC(2026, 2, 25));
     expect(status.active).toBe(true);
     expect(status.reason).toBe("ok");
-    expect(status.balanceCents).toBe(-400); // conso API en attente de facturation
+    expect(status.balanceCents).toBe(0);
   });
 
   it("crédit épuisé par l'API (plus de 50 € non couverts) → coupure immédiate, sans grâce", () => {
@@ -211,7 +214,10 @@ describe("statut du service (coupures)", () => {
     expect(status.reason).toBe("credit_api_epuise");
   });
 
-  it("une conso API modérée (≤ 50 €) ne coupe pas : elle part sur la facture suivante", () => {
+  it("une conso API non réglée ouvre le même délai que tout solde négatif", () => {
+    // Règle voulue : tout solde négatif, quelle qu'en soit la cause, donne
+    // GRACE_DAYS jours pour régulariser. Pas de traitement de faveur pour la
+    // dette API — le client doit voir un compte à rebours, pas « tu as le temps ».
     const core = testCore();
     initBilling(core, T0);
     ensureMonthlyDebits(core, T0);
@@ -220,9 +226,38 @@ describe("statut du service (coupures)", () => {
       { model: "m", inputTokens: 1, outputTokens: 1, costCentimes: 300, billedCentimes: 1200 },
       T0 + DAY,
     );
-    const status = billingStatus(core, T0 + 2 * DAY);
+
+    const pendant = billingStatus(core, T0 + 2 * DAY);
+    expect(pendant.active).toBe(true);
+    expect(pendant.reason).toBe("solde_negatif");
+    expect(pendant.cutAt).toBe(T0 + DAY + GRACE_DAYS * DAY); // ancré sur la conso
+
+    const apres = billingStatus(core, T0 + DAY + (GRACE_DAYS + 1) * DAY);
+    expect(apres.active).toBe(false);
+  });
+
+  it("solde revenu à zéro : le compte à rebours repart de zéro, plus aucune coupure", () => {
+    const core = testCore();
+    initBilling(core, T0);
+    ensureMonthlyDebits(core, T0);
+    recordUsage(
+      core,
+      { model: "m", inputTokens: 1, outputTokens: 1, costCentimes: 300, billedCentimes: 1200 },
+      T0 + DAY,
+    );
+    // Le client régularise sa dette API avant la fin du délai.
+    core.sqlite
+      .prepare(
+        `INSERT INTO billing_transactions (type, montant_cents, description, ref, created_at)
+         VALUES ('paiement', 1200, 'Régularisation', 'stripe:in_regul', ?)`,
+      )
+      .run(T0 + 2 * DAY);
+
+    const status = billingStatus(core, T0 + 30 * DAY);
+    expect(status.balanceCents).toBe(0);
     expect(status.active).toBe(true);
     expect(status.reason).toBe("ok");
+    expect(status.cutAt).toBeNull();
   });
 
   it("un paiement reçu réactive le service", () => {
