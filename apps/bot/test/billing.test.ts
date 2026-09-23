@@ -130,6 +130,31 @@ describe("statut du service (coupures)", () => {
     expect(after.reason).toBe("abonnement_impaye");
   });
 
+  it("la date de coupure est figée : le compte à rebours décroît vraiment jour après jour", () => {
+    // Régression : une échéance calculée depuis `now` recule d'un jour chaque
+    // jour, et le client voit « 7 jours » indéfiniment — donc aucune idée du
+    // temps qu'il lui reste.
+    const core = testCore();
+    initBilling(core, T0);
+    ensureMonthlyDebits(core, T0);
+    const feb5 = Date.UTC(2026, 1, 5);
+    ensureMonthlyDebits(core, feb5); // échéance de février, non couverte
+
+    const joursRestants = (at: number): number => {
+      const status = billingStatus(core, at);
+      expect(status.cutAt).not.toBeNull();
+      return Math.ceil((status.cutAt! - at) / DAY);
+    };
+
+    const cutAtJ1 = billingStatus(core, feb5 + DAY).cutAt;
+    const cutAtJ3 = billingStatus(core, feb5 + 3 * DAY).cutAt;
+    expect(cutAtJ3).toBe(cutAtJ1); // la date ne bouge pas d'un appel à l'autre
+
+    expect(joursRestants(feb5 + DAY)).toBe(GRACE_DAYS - 1);
+    expect(joursRestants(feb5 + 3 * DAY)).toBe(GRACE_DAYS - 3);
+    expect(joursRestants(feb5 + (GRACE_DAYS - 1) * DAY)).toBe(1);
+  });
+
   it("rattrapage après indisponibilité : la grâce court depuis la POSE du débit, pas la date nominale", () => {
     const core = testCore();
     initBilling(core, T0);

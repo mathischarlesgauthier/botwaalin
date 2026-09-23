@@ -196,7 +196,12 @@ export function billingStatus(core: Core, now: number = Date.now()): BillingStat
   // Abonnements non couverts : grâce depuis la pose du plus ancien débit impayé.
   if (subTotal > credits) {
     let covered = credits;
-    let cutAt = now + GRACE_DAYS * DAY_MS;
+    // Ancré sur une date de POSE, jamais sur `now` : une échéance calculée à
+    // partir de l'instant présent recule d'une journée chaque jour, et le
+    // client voit un compte à rebours éternellement bloqué sur GRACE_DAYS.
+    // Repli sur le dernier débit connu, qui existe forcément ici (subTotal > 0
+    // implique au moins une ligne d'abonnement).
+    let cutAt = (debits[debits.length - 1]?.created_at ?? now) + GRACE_DAYS * DAY_MS;
     for (const debit of debits) {
       covered += debit.amount;
       if (covered < 0) {

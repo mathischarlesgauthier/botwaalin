@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { GRACE_DAYS, SUBSCRIPTION_CENTS, type BillingStatus } from "@arbi/core";
+import { SUBSCRIPTION_CENTS, type BillingStatus } from "@arbi/core";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -24,9 +24,12 @@ function dateFr(ts: number): string {
 export function BillingBanner({
   billing,
   paymentLink,
+  prochainPaiement,
 }: {
   billing: BillingStatus;
   paymentLink: string;
+  /** Prochaine échéance mensuelle, pour dater la facture à venir. */
+  prochainPaiement: number | null;
 }) {
   const suspendu = !billing.active;
   const enRetard = billing.balanceCents < 0;
@@ -75,17 +78,26 @@ export function BillingBanner({
           ⚠️ Abonnement à régler — solde {euros(billing.balanceCents)}
         </div>
         <div>
-          {joursRestants != null ? (
+          {joursRestants != null && billing.cutAt != null ? (
             <>
-              Il te reste <strong>{joursRestants === 0 ? "moins d'un jour" : `${joursRestants} jour${joursRestants > 1 ? "s" : ""}`}</strong>{" "}
-              pour payer tes {euros(SUBSCRIPTION_CENTS)} mensuels
-              {billing.cutAt != null ? ` (coupure le ${dateFr(billing.cutAt)})` : ""}, sinon le
-              service sera coupé.
+              Il te reste{" "}
+              <strong>
+                {joursRestants === 0
+                  ? "moins d'un jour"
+                  : `${joursRestants} jour${joursRestants > 1 ? "s" : ""}`}
+              </strong>{" "}
+              pour payer tes {euros(SUBSCRIPTION_CENTS)} mensuels — coupure du service le{" "}
+              <strong>{dateFr(billing.cutAt)}</strong>.
             </>
           ) : (
+            // Pas de date de coupure : la dette vient de la consommation API,
+            // pas d'un abonnement impayé. Annoncer un délai fixe ici afficherait
+            // un compte à rebours qui ne bouge jamais.
             <>
-              Ton abonnement mensuel de {euros(SUBSCRIPTION_CENTS)} est à régler sous {GRACE_DAYS}{" "}
-              jours, sinon le service sera coupé.
+              Ce montant sera ajouté à ta facture
+              {prochainPaiement != null ? ` du ${dateFr(prochainPaiement)}` : " du mois prochain"}.
+              Aucune coupure prévue d&apos;ici là ; tu peux régler dès maintenant pour repasser au
+              vert.
             </>
           )}
         </div>
