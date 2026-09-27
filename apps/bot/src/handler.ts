@@ -183,8 +183,8 @@ export function createHandler(deps: HandlerDeps) {
       return;
     }
     if (buttonItem?.buttonId === "btn_rapide") {
-      const telegram = core.settings.get("telegram_contact");
-      const message = `Parfait 👍 Écris directement à Jacob sur Telegram : ${telegram} — réponse rapide garantie.`;
+      const contact = core.settings.get("contact_direct");
+      const message = `Parfait 👍 Écris directement à Jacob au ${contact} — réponse rapide garantie.`;
       const result = await wa.sendText(waId, message);
       if (result.sent) core.messages.insert(waId, "assistant", message);
       logDecision(log, "button_fast", { waId });

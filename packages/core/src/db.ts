@@ -73,12 +73,16 @@ export interface ExampleRow {
 }
 
 export const NIVEAU4_MESSAGE =
-  "Je n'ai pas les connaissances nécessaires pour pouvoir te répondre précisément. Si tu souhaites avoir une réponse un peu plus rapide, contacte directement {telegram} sur Telegram. Sinon, laisse-moi une alerte et Jacob pourra intervenir directement dans la conversation.";
+  "Je n'ai pas les connaissances nécessaires pour pouvoir te répondre précisément. Si tu souhaites une réponse plus rapide, écris directement à Jacob au {contact}. Sinon, laisse-moi une alerte et il pourra intervenir directement dans la conversation.";
 
 export const SETTINGS_DEFAULTS = {
   admin_numbers: [] as AdminNumber[],
   menu_poles: MENU_ROWS as MenuRow[],
-  telegram_contact: "@Jacob13013",
+  /**
+   * Contact direct de Jacob donné au client quand le bot passe la main.
+   * WhatsApp : le client y est déjà, il n'a pas à changer d'application.
+   */
+  contact_direct: "+33 7 78 78 37 01",
   group_link: "https://t.me/+P6Vba87ei95lZGJk",
   bot_actif: true,
   reactivation_delay_h: 24,

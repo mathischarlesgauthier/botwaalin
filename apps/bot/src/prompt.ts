@@ -237,7 +237,7 @@ ${catalogue}
 export function buildDynamicContext(
   state: ConversationStateData,
   groupLink: string,
-  telegramContact: string,
+  contactDirect: string,
   // Mémoire client (§5) : DONNÉE PERSONNELLE d'UN client → reste ici, dans le
   // contexte DYNAMIQUE reconstruit à chaque appel, jamais dans buildStaticPrompt
   // (caché, structurellement partagé entre toutes les conversations).
@@ -286,6 +286,6 @@ export function buildDynamicContext(
   if (state.crossSellDone) {
     lines.push(`- Un cross-sell a déjà été fait dans cette conversation : n'en fais plus.`);
   }
-  lines.push(`- Contact humain : ${telegramContact} (Telegram).`);
+  lines.push(`- Contact direct de Jacob (WhatsApp) : ${contactDirect}.`);
   return lines.join("\n");
 }

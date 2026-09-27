@@ -82,14 +82,6 @@ export function waHref(number: string, text: string): string {
 }
 
 /** `@pseudo` ou `pseudo` → `https://t.me/pseudo` ; une URL est rendue telle quelle ; vide → "". */
-export function telegramHref(contact: string): string {
-  const clean = contact.trim();
-  if (!clean) return "";
-  if (/^https?:\/\//i.test(clean)) return clean;
-  const handle = clean.replace(/^@/, "").replace(/^t\.me\//i, "");
-  return handle ? `https://t.me/${handle}` : "";
-}
-
 /** Numéro E.164 → affichage français : +33756975687 → "+33 7 56 97 56 87". */
 export function formatPhoneFr(e164: string): string {
   const digits = e164.replace(/\D/g, "");

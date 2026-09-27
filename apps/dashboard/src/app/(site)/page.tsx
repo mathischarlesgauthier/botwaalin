@@ -42,11 +42,6 @@ export default function HomePage() {
                 <WaLink href={site.whatsapp.href} className="aj-btn-orange">
                   {hero.ctaPrimary}
                 </WaLink>
-                {site.telegram.href && (
-                  <WaLink href={site.telegram.href} className="aj-btn-ghost">
-                    {hero.ctaSecondary}
-                  </WaLink>
-                )}
               </div>
               <div className="aj-stats">
                 <div className="aj-stat aj-stat--orange">

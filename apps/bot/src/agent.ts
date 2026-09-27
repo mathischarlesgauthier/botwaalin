@@ -185,9 +185,9 @@ export class SalesAgent {
         categorie: analysis.categorie,
         dernierMessage: analysis.combinedText.slice(0, 300),
       });
-      const telegram = core.settings.get("telegram_contact");
+      const contact = core.settings.get("contact_direct");
       return {
-        text: `Pour tout ce qui touche au paiement, c'est Jacob qui gère en direct : écris-lui sur Telegram ${telegram}. Il a été prévenu de ton message.`,
+        text: `Pour tout ce qui touche au paiement, c'est Jacob qui gère en direct : écris-lui au ${contact}. Il a été prévenu de ton message.`,
         blocked: true,
       };
     }
@@ -227,9 +227,9 @@ export class SalesAgent {
       categorie: analysis.categorie,
       dernierMessage: analysis.combinedText.slice(0, 300),
     });
-    const telegram = this.deps.core.settings.get("telegram_contact");
+    const contact = this.deps.core.settings.get("contact_direct");
     return {
-      text: `Bonne question 👌 Pour te donner le tarif exact, je préfère te mettre en direct avec Jacob : écris-lui sur Telegram ${telegram}. Il a aussi été prévenu de ton message.`,
+      text: `Bonne question 👌 Pour te donner le tarif exact, je préfère te mettre en direct avec Jacob : écris-lui au ${contact}. Il a aussi été prévenu de ton message.`,
       blocked: true,
     };
   }
@@ -285,7 +285,7 @@ export class SalesAgent {
     const dynamicContext = buildDynamicContext(
       state,
       core.settings.get("group_link"),
-      core.settings.get("telegram_contact"),
+      core.settings.get("contact_direct"),
       core.facts.actifs(waId, 10),
     );
     const system: Anthropic.Messages.TextBlockParam[] = [
@@ -478,9 +478,9 @@ export class SalesAgent {
       categorie: analysis.categorie,
       dernierMessage: analysis.combinedText.slice(0, 300),
     });
-    const telegram = this.deps.core.settings.get("telegram_contact");
+    const contact = this.deps.core.settings.get("contact_direct");
     const state = this.deps.core.state.get(waId);
-    const text = `Je préfère ne pas te répondre à moitié : Jacob a été prévenu et revient vers toi rapidement. Si tu veux aller plus vite, écris-lui directement sur Telegram ${telegram}.`;
+    const text = `Je préfère ne pas te répondre à moitié : Jacob a été prévenu et revient vers toi rapidement. Si tu veux aller plus vite, écris-lui directement au ${contact}.`;
     return {
       text,
       alertFired: true,

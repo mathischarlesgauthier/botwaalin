@@ -923,7 +923,10 @@ export async function deleteMenuPoleAction(id: string): Promise<void> {
 export async function saveGeneralSettingsAction(formData: FormData): Promise<void> {
   await requireSession();
   const { core } = getRuntime();
-  core.settings.set("telegram_contact", String(formData.get("telegram_contact") ?? "").trim());
+  const contactDirect = String(formData.get("contact_direct") ?? "").trim();
+  // Un contact vide laisserait le bot promettre « écris-lui au  » : on garde
+  // la valeur précédente plutôt que d'effacer.
+  if (contactDirect) core.settings.set("contact_direct", contactDirect);
   core.settings.set("group_link", String(formData.get("group_link") ?? "").trim());
   core.settings.set("dashboard_url", String(formData.get("dashboard_url") ?? "").trim());
   core.settings.set("alert_email_to", String(formData.get("alert_email_to") ?? "").trim());

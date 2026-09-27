@@ -333,12 +333,17 @@ export default async function ReglagesPage({
         <h2 className="font-semibold">Paramètres généraux</h2>
         <div className="grid gap-3 md:grid-cols-2">
           <div>
-            <label className="label">Contact Telegram (closing)</label>
+            <label className="label">Contact direct de Jacob (WhatsApp)</label>
             <input
-              name="telegram_contact"
-              defaultValue={core.settings.get("telegram_contact")}
+              name="contact_direct"
+              defaultValue={core.settings.get("contact_direct")}
               className="input"
+              placeholder="+33 7 78 78 37 01"
             />
+            <p className="mt-1 text-xs text-neutral-500">
+              Donné au client quand le bot passe la main ou qu&apos;il clique sur « Réponse
+              rapide ».
+            </p>
           </div>
           <div>
             <label className="label">Lien du groupe privé</label>
@@ -416,7 +421,7 @@ export default async function ReglagesPage({
             className="input"
           />
           <p className="mt-1 text-xs text-neutral-400">
-            Le marqueur {"{telegram}"} est remplacé par le contact Telegram ci-dessus.
+            Le marqueur {"{contact}"} est remplacé par le contact direct de Jacob ci-dessus.
           </p>
         </div>
         <button className="btn btn-primary" type="submit">

@@ -9,11 +9,6 @@ export function MobileBar({ site }: { site: SiteData }) {
       <WaLink href={site.whatsapp.href} className="aj-mobile-wa">
         {hero.ctaPrimary}
       </WaLink>
-      {site.telegram.href && (
-        <WaLink href={site.telegram.href} className="aj-mobile-tg">
-          {hero.ctaSecondary}
-        </WaLink>
-      )}
     </div>
   );
 }

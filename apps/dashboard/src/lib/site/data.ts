@@ -19,13 +19,12 @@ import {
   priceShort,
   serviceSlug,
   slugify,
-  telegramHref,
   waHref,
 } from "./format";
 
 /**
  * View-model du site vitrine : TOUT est dérivé de la base (menu_poles, pricing
- * actif, telegram_contact, group_link, site_content). Aucune donnée
+ * actif, group_link, site_content). Aucune donnée
  * conversation/lead/alerte/facturation ne transite par ici.
  */
 
@@ -121,7 +120,6 @@ export interface SiteData {
   /** Contenu normalisé ET rendu (balises remplacées). */
   content: SiteContent;
   whatsapp: { e164: string; digits: string; display: string; href: string };
-  telegram: { contact: string; href: string };
   groupLink: string;
   poles: SitePole[];
   services: SiteService[];
@@ -327,7 +325,6 @@ export function buildSiteData(core: SiteCore): SiteData {
       (a, b) =>
         a.categorie.localeCompare(b.categorie, "fr") || a.label.localeCompare(b.label, "fr"),
     );
-  const telegramContact = core.settings.get("telegram_contact").trim();
   const groupLink = core.settings.get("group_link").trim();
 
   // 1. Pôles déclarés, triés par `order` (défaut : position dans le menu).
@@ -497,7 +494,6 @@ export function buildSiteData(core: SiteCore): SiteData {
       display: formatPhoneFr(content.whatsapp),
       href: wa(content.hero.waText),
     },
-    telegram: { contact: telegramContact, href: telegramHref(telegramContact) },
     groupLink,
     poles,
     services,

@@ -120,11 +120,6 @@ export default async function ServicePage({ params }: { params: Params }) {
             <WaLink href={service.waHref} className="aj-btn-dark">
               {hero.ctaPrimary}
             </WaLink>
-            {site.telegram.href && (
-              <WaLink href={site.telegram.href} className="aj-btn-ghost">
-                {hero.ctaSecondary}
-              </WaLink>
-            )}
           </div>
         </div>
         <div className="aj-pblock-wrap">

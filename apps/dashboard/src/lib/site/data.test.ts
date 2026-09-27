@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { normalizeSiteContent, renderTemplate } from "./content";
 import { buildSiteData, createTemplateContext } from "./data";
 import { DEFAULT_SITE_CONTENT } from "./defaults";
-import { formatPhoneFr, inkOf, priceShort, slugify, telegramHref, waHref } from "./format";
+import { formatPhoneFr, inkOf, priceShort, slugify, waHref } from "./format";
 
 let core: Core;
 
@@ -234,14 +234,13 @@ describe("buildSiteData — services", () => {
     ]);
   });
 
-  it("liens WhatsApp et Telegram dérivés des réglages", () => {
+  it("liens WhatsApp dérivés des réglages", () => {
     const data = buildSiteData(core);
     expect(data.whatsapp.e164).toBe("+33756975687");
     expect(data.whatsapp.display).toBe("+33 7 56 97 56 87");
     expect(data.whatsapp.href).toBe(
       "https://wa.me/33756975687?text=" + encodeURIComponent("Salut, je veux lancer un business."),
     );
-    expect(data.telegram.href).toBe("https://t.me/Jacob13013");
     expect(data.groupLink).toBe("https://t.me/+P6Vba87ei95lZGJk");
     const ghost = data.findPole("ghost-studio");
     expect(ghost?.waHref).toBe(
@@ -396,9 +395,6 @@ describe("format", () => {
     expect(inkOf("bleu")).toBe("#1C1C1E");
     expect(formatPhoneFr("+33756975687")).toBe("+33 7 56 97 56 87");
     expect(formatPhoneFr("+447911123456")).toBe("+44 79 11 12 34 56");
-    expect(telegramHref("@Jacob13013")).toBe("https://t.me/Jacob13013");
-    expect(telegramHref("https://t.me/+abc")).toBe("https://t.me/+abc");
-    expect(telegramHref("")).toBe("");
     expect(waHref("+33 7 56 97 56 87", "Salut ça va ?")).toBe(
       "https://wa.me/33756975687?text=Salut%20%C3%A7a%20va%20%3F",
     );

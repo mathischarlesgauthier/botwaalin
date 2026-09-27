@@ -277,6 +277,16 @@ export function migrate(db: BetterSqlite3.Database): void {
   // Après l'ALTER, donc valable aussi bien pour une base neuve que migrée.
   db.exec(`CREATE INDEX IF NOT EXISTS idx_questions_sujet ON questions (sujet)`);
 
+  // v2.3 : le compte Telegram de contact n'existe plus. Un message de niveau 4
+  // personnalisé qui y renvoie enverrait les clients dans le vide : on efface
+  // la valeur stockée pour revenir au message par défaut (contact WhatsApp).
+  // Le réglage `telegram_contact` lui-même n'est plus lu nulle part.
+  db.exec(
+    `DELETE FROM settings
+     WHERE key = 'niveau4_message' AND value LIKE '%elegram%'`,
+  );
+  db.exec(`DELETE FROM settings WHERE key = 'telegram_contact'`);
+
   // v1 → v2 : colonnes ajoutées sur contacts
   const contactCols = tableColumns(db, "contacts");
   if (!contactCols.has("mode_humain")) {

@@ -17,9 +17,13 @@ export const NIVEAU4_BUTTONS = [
 ] as const;
 
 export function renderNiveau4Message(core: Core): string {
+  const contact = core.settings.get("contact_direct");
+  // `{telegram}` reste substitué pour ne pas laisser un marqueur brut dans un
+  // message personnalisé écrit avant l'abandon de Telegram.
   return core.settings
     .get("niveau4_message")
-    .replaceAll("{telegram}", core.settings.get("telegram_contact"));
+    .replaceAll("{contact}", contact)
+    .replaceAll("{telegram}", contact);
 }
 
 /**
@@ -78,7 +82,7 @@ export const toolDefinitions: Anthropic.Messages.Tool[] = [
   {
     name: "niveau4_humain",
     description:
-      "Niveau 4 — intervention humaine : envoie au client le message standard + les 2 boutons (⚡ réponse rapide via Telegram / 🔔 laisser une alerte). À utiliser quand tu n'as pas l'information, quand le prix n'existe pas dans la grille, pour un devis personnalisé, ou pour finaliser un paiement. Après l'appel, n'ajoute RIEN d'autre.",
+      "Niveau 4 — intervention humaine : envoie au client le message standard + les 2 boutons (⚡ réponse rapide en écrivant à Jacob / 🔔 laisser une alerte). À utiliser quand tu n'as pas l'information, quand le prix n'existe pas dans la grille, pour un devis personnalisé, ou pour finaliser un paiement. Après l'appel, n'ajoute RIEN d'autre.",
     input_schema: {
       type: "object",
       properties: {
@@ -190,7 +194,7 @@ export async function executeTool(
         });
         ctx.flags.alertFired = true;
         logDecision(log, "niveau4_send_failed", { waId, motif });
-        return "ÉCHEC d'envoi du message standard (WhatsApp indisponible). Jacob a été alerté. Réponds au client en une phrase courte en l'orientant vers Telegram.";
+        return "ÉCHEC d'envoi du message standard (WhatsApp indisponible). Jacob a été alerté. Réponds au client en une phrase courte en lui donnant le contact direct de Jacob.";
       }
       ctx.flags.niveau4Sent = true;
       core.contacts.setStatut(waId, "attente_choix");

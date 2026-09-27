@@ -79,7 +79,8 @@ describe("filet anti-encaissement", () => {
 
     const result = await agent.respond(WA_ID, makeAnalysis({ intent: "achat" }));
     expect(result.text).not.toContain("paypal");
-    expect(result.text).toContain("Telegram");
+    // Le client est renvoyé vers le contact direct de Jacob, pas laissé sans suite.
+    expect(result.text).toContain(core.settings.get("contact_direct"));
     expect(result.alertFired).toBe(true);
     expect(core.alerts.open()).toHaveLength(1);
     core.close();
@@ -119,7 +120,7 @@ describe("gardes tarifaires par type", () => {
       WA_ID,
       makeAnalysis({ serviceKey: "societe_llc_usa", categorie: "Société", intent: "tarif" }),
     );
-    expect(result.text).toContain("Telegram");
+    expect(result.text).toContain(core.settings.get("contact_direct"));
     expect(result.alertFired).toBe(true);
     core.close();
   });

@@ -23,11 +23,6 @@ export function PageCta({
           <WaLink href={waHref} className="aj-btn-ink" style={{ background: ink }}>
             {hero.ctaPrimary}
           </WaLink>
-          {site.telegram.href && (
-            <WaLink href={site.telegram.href} className="aj-btn-outline-light">
-              {hero.ctaSecondary}
-            </WaLink>
-          )}
         </div>
       </div>
     </section>

@@ -4,7 +4,7 @@ import { WaLink } from "./WaLink";
 /** CTA final dégradé de l'accueil : WhatsApp + groupe privé Telegram (masqué si vide). */
 export function CtaBand({ site }: { site: SiteData }) {
   const { cta } = site.content;
-  const contact = [site.whatsapp.display, site.telegram.contact].filter(Boolean).join(" · ");
+  const contact = site.whatsapp.display;
   return (
     <section className="aj-section aj-sec-cta">
       <div data-reveal="1" className="aj-cta">

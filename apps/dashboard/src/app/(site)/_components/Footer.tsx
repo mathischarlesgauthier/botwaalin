@@ -9,11 +9,6 @@ export function Footer({ site }: { site: SiteData }) {
         <WaLink href={site.whatsapp.href} className="aj-footer-link">
           WhatsApp
         </WaLink>
-        {site.telegram.href && (
-          <WaLink href={site.telegram.href} className="aj-footer-link">
-            Telegram
-          </WaLink>
-        )}
         {site.groupLink && (
           <WaLink href={site.groupLink} className="aj-footer-link">
             Groupe privé
