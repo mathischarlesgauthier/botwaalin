@@ -76,6 +76,8 @@ export interface AgentResult {
   text: string | null;
   alertFired: boolean;
   niveau4Sent: boolean;
+  /** Réponse écartée par un garde-fou prix : régénérable une fois. */
+  priceBlocked?: boolean;
   /**
    * Persistance de l'état (marqueurs de style, flags groupe/cross-sell,
    * replyCount) — appelée par respond() UNIQUEMENT quand la réponse est
@@ -202,6 +204,10 @@ export class SalesAgent {
     }
 
     const serviceRow = analysis.serviceKey ? core.pricing.byKey(analysis.serviceKey) : undefined;
+    // Un service « sur devis » ne doit jamais être chiffré, même avec un
+    // montant valide ailleurs dans la grille : le client le prendrait pour le
+    // prix de CE service. La réponse est écartée, mais le bot la refait
+    // (cf. respond) au lieu de renvoyer le client vers Jacob.
     if (serviceRow?.actif === 1 && serviceRow.type === "QUOTE" && amountsIn(reply).length > 0) {
       logDecision(log, "price_guard_blocked", {
         waId,
@@ -224,6 +230,13 @@ export class SalesAgent {
     return { text: reply, blocked: false };
   }
 
+  /**
+   * Réponse jetée pour cause de prix non autorisé. Jacob est prévenu, mais le
+   * CLIENT n'est plus renvoyé vers lui : le bot reste dans la conversation et
+   * relance sur ce qu'il sait faire. Un renvoi ici était doublement mauvais —
+   * il coupait une conversation que le bot maîtrisait, et il se déclenchait
+   * aussi sur des réponses parfaitement correctes.
+   */
   private async blockedPriceReply(
     waId: string,
     analysis: Analysis,
@@ -236,23 +249,32 @@ export class SalesAgent {
       categorie: analysis.categorie,
       dernierMessage: analysis.combinedText.slice(0, 300),
     });
-    const contact = this.deps.core.settings.get("contact_direct");
     return {
-      text: `Bonne question 👌 Pour te donner le tarif exact, je préfère te mettre en direct avec Jacob : écris-lui au ${contact}. Il a aussi été prévenu de ton message.`,
+      text: "Pour ce point précis, le tarif dépend de ce que tu veux exactement — dis-m'en un peu plus sur ton besoin et je te détaille tout de suite ce qui est inclus.",
       blocked: true,
     };
   }
 
   async respond(waId: string, analysis: Analysis): Promise<AgentResult> {
     this.refreshKnowledge();
-    for (let pass = 0; pass < 2; pass++) {
+    let priceHint = "";
+    for (let pass = 0; pass < 3; pass++) {
       const cursor = this.deps.core.messages.lastUserMessageId(waId);
-      const result = await this.generate(waId, analysis);
+      const result = await this.generate(waId, analysis, priceHint);
       if (result.text === null) return result;
       if (pass === 0 && this.deps.core.messages.lastUserMessageId(waId) !== cursor) {
         // Un nouveau message client est arrivé pendant la génération : on
         // JETTE cette réponse (sans persister son état) et on régénère.
         logDecision(this.deps.log, "regenerate_after_new_message", { waId });
+        continue;
+      }
+      // Prix hors grille : on redonne sa chance au bot avec une consigne
+      // explicite, au lieu de sortir directement la réponse de repli. Une
+      // seule reprise — au-delà, le repli part.
+      if (result.priceBlocked && !priceHint) {
+        logDecision(this.deps.log, "regenerate_after_price_guard", { waId });
+        priceHint =
+          "IMPORTANT : ta réponse précédente a été refusée car elle citait un montant absent de la grille tarifaire. Reformule en n'utilisant QUE les montants de la grille ci-dessus, ou sans aucun montant si tu n'en as pas de valide. Réponds quand même sur le fond, complètement, sans renvoyer le client vers quelqu'un d'autre.";
         continue;
       }
       result.commit?.();
@@ -261,7 +283,7 @@ export class SalesAgent {
     return { text: null, alertFired: false, niveau4Sent: false };
   }
 
-  private async generate(waId: string, analysis: Analysis): Promise<AgentResult> {
+  private async generate(waId: string, analysis: Analysis, priceHint = ""): Promise<AgentResult> {
     const { core, client, model, log } = this.deps;
     const state = core.state.get(waId);
     const flags = { alertFired: false, niveau4Sent: false };
@@ -300,7 +322,7 @@ export class SalesAgent {
     );
     const system: Anthropic.Messages.TextBlockParam[] = [
       { type: "text", text: this.staticPrompt, cache_control: { type: "ephemeral" } },
-      { type: "text", text: dynamicContext },
+      { type: "text", text: priceHint ? `${dynamicContext}\n${priceHint}` : dynamicContext },
     ];
 
     let styleRetried = false;
@@ -455,6 +477,7 @@ export class SalesAgent {
         text: guarded.text,
         alertFired: flags.alertFired,
         niveau4Sent: false,
+        priceBlocked: guarded.blocked,
         commit: () => this.persistTurn(state, guarded.text),
       };
     }
