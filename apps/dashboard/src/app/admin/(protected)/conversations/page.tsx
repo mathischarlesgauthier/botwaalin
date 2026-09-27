@@ -1,8 +1,26 @@
 import Link from "next/link";
+import { cookies } from "next/headers";
+import { filterConversationsAction } from "@/lib/actions";
+import { CONV_FILTER_COOKIE } from "@/lib/constants";
 import { requireSession } from "@/lib/auth";
 import { getRuntime } from "@/lib/core";
 
 export const dynamic = "force-dynamic";
+
+/** Dernier filtre mémorisé, ou `null` si aucun / illisible. */
+async function readConvFilter(): Promise<{ q: string; statut: string } | null> {
+  const raw = (await cookies()).get(CONV_FILTER_COOKIE)?.value;
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as { q?: unknown; statut?: unknown };
+    return {
+      q: typeof parsed.q === "string" ? parsed.q : "",
+      statut: typeof parsed.statut === "string" ? parsed.statut : "",
+    };
+  } catch {
+    return null;
+  }
+}
 
 function statusBadge(row: { modeHumain: number; alertesOuvertes: number; optOut: number; statut: string }) {
   if (row.optOut) return <span className="badge badge-neutre">opt-out</span>;
@@ -22,7 +40,14 @@ export default async function ConversationsPage({
   searchParams: Promise<{ q?: string; statut?: string }>;
 }) {
   await requireSession();
-  const { q = "", statut = "" } = await searchParams;
+  const params = await searchParams;
+  // Aucun paramètre dans l'URL = on revient sur la liste (lien « ← Conversations »,
+  // menu, retour navigateur) : on restaure le dernier filtre utilisé. Un
+  // paramètre présent, même vide, reste prioritaire — c'est un choix explicite.
+  const memorise =
+    params.q === undefined && params.statut === undefined ? await readConvFilter() : null;
+  const q = params.q ?? memorise?.q ?? "";
+  const statut = params.statut ?? memorise?.statut ?? "";
   const { core } = getRuntime();
 
   let rows = core.conversationOverview();
@@ -43,23 +68,35 @@ export default async function ConversationsPage({
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-2xl font-bold">Conversations</h1>
-        <form className="flex gap-2" action="/admin/conversations">
-          <input
-            name="q"
-            defaultValue={q}
-            placeholder="Rechercher contact ou message…"
-            className="input w-64"
-          />
-          <select name="statut" defaultValue={statut} className="input w-32">
-            <option value="">Tous</option>
-            <option value="alerte">Alerte</option>
-            <option value="humain">Humain</option>
-            <option value="bot">Bot</option>
-          </select>
-          <button className="btn btn-secondary" type="submit">
-            Filtrer
-          </button>
-        </form>
+        {/* Deux formulaires frères : un <form> ne peut pas en contenir un autre. */}
+        <div className="flex flex-wrap items-center gap-2">
+          <form className="flex flex-wrap gap-2" action={filterConversationsAction}>
+            <input
+              name="q"
+              defaultValue={q}
+              placeholder="Rechercher contact ou message…"
+              className="input w-64"
+            />
+            <select name="statut" defaultValue={statut} className="input w-32">
+              <option value="">Tous</option>
+              <option value="alerte">Alerte</option>
+              <option value="humain">Humain</option>
+              <option value="bot">Bot</option>
+            </select>
+            <button className="btn btn-secondary" type="submit">
+              Filtrer
+            </button>
+          </form>
+          {(q || statut) && (
+            // Soumis vide : efface aussi le filtre mémorisé, sinon il
+            // reviendrait au prochain retour sur la liste.
+            <form action={filterConversationsAction}>
+              <button className="btn btn-secondary" type="submit">
+                ✕ Tout afficher
+              </button>
+            </form>
+          )}
+        </div>
       </div>
 
       {/*

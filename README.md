@@ -92,6 +92,17 @@ Limites imposées par WhatsApp, vérifiées avant tout envoi : **photo JPEG/PNG 
 
 Le résumé se régénère **tout seul** à l'ouverture d'une conversation dès qu'un message est arrivé depuis le dernier calcul (colonne `conversation_state.resume_message_id`). La page s'affiche immédiatement et le résumé se met à jour en arrière-plan ; le bouton « 🔄 Régénérer » reste disponible pour forcer. Les appels LLM sont bornés à 60 s (avant, un endpoint lent pouvait bloquer une demi-heure sans rien afficher).
 
+### Demandes / Leads
+
+Les leads ne se créent pas à la main : le **bot** les enregistre (outil `save_lead`) au closing, avec offre, besoin, budget, délai et un score de 1 (curieux) à 5 (prêt à acheter). La page sert au suivi commercial.
+
+- **Statut** : Nouveau → En cours → Devis envoyé → Gagné / Perdu. Il s'enregistre **dès la sélection**, sans bouton de validation.
+- **Filtres** par statut en haut de page, avec le nombre de fiches dans chacun.
+- Un **badge orange** dans le menu et une carte **« Demandes à traiter »** sur la vue d'ensemble signalent les leads au statut *Nouveau* — sans quoi une demande pouvait dormir plusieurs jours.
+- Le nom du contact ouvre la conversation complète ; l'**export CSV** (séparateur `;`) s'ouvre dans Excel.
+
+Sur la liste des **Conversations**, le filtre (recherche + statut) est **mémorisé dans un cookie** : ouvrir une conversation puis revenir conserve le filtre. « ✕ Tout afficher » l'efface pour de bon.
+
 ### Fichiers envoyés par le bot
 
 **Fichiers du bot** est une bibliothèque que Jacob alimente : plaquette de tarifs, photo d'une réalisation, vidéo de démo. Chaque fichier a un **nom**, une **description qui dit quand l'envoyer**, et une clé générée automatiquement. Le bot les voit dans son prompt et les envoie lui-même avec l'outil `send_file`, quand ils répondent à la demande — jamais deux fois le même dans une conversation, et jamais une clé inventée (il reçoit la liste des clés valides en cas d'erreur).

@@ -531,6 +531,13 @@ export function createCore(options: CreateCoreOptions) {
     list() {
       return db.select().from(schema.leads).orderBy(desc(schema.leads.ts)).all();
     },
+    /** Leads encore à traiter — alimente le compteur du menu et de l'accueil. */
+    countNouveaux(): number {
+      const row = sqlite
+        .prepare(`SELECT COUNT(*) AS n FROM leads WHERE statut = 'nouveau'`)
+        .get() as { n: number };
+      return row.n;
+    },
     setStatut(id: number, statut: string): void {
       db.update(schema.leads).set({ statut }).where(eq(schema.leads.id, id)).run();
     },

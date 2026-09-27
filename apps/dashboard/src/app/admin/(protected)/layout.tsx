@@ -25,6 +25,7 @@ export default async function ProtectedLayout({ children }: { children: React.Re
   const user = await requireSession();
   const { core } = getRuntime();
   const openAlerts = core.alerts.countOpen();
+  const nouveauxLeads = core.leads.countNouveaux();
   const botActif = core.settings.get("bot_actif");
   const billing = billingStatus(core);
   const billingWarn = !billing.active || billing.balanceCents < 0;
@@ -53,6 +54,11 @@ export default async function ProtectedLayout({ children }: { children: React.Re
               {item.href === "/admin/conversations" && openAlerts > 0 && (
                 <span className="ml-auto rounded-full bg-red-600 px-2 py-0.5 text-xs font-bold">
                   {openAlerts}
+                </span>
+              )}
+              {item.href === "/admin/leads" && nouveauxLeads > 0 && (
+                <span className="ml-auto rounded-full bg-amber-500 px-2 py-0.5 text-xs font-bold text-black">
+                  {nouveauxLeads}
                 </span>
               )}
               {item.href === "/admin/facturation" && billingWarn && (

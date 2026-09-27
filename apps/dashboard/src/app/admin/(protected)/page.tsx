@@ -25,6 +25,7 @@ export default async function OverviewPage() {
   const { core } = getRuntime();
   const [day, week, month] = [computeKpis(core, DAY), computeKpis(core, 7 * DAY), computeKpis(core, 30 * DAY)];
   const openAlerts = core.alerts.open();
+  const nouveauxLeads = core.leads.countNouveaux();
   const top = topQuestions(core, 10);
   const unanswered = core.questions.unanswered(10);
   const maxCat = Math.max(1, ...month.parCategorie.map((c) => c.n));
@@ -33,7 +34,7 @@ export default async function OverviewPage() {
     <div className="space-y-6">
       <h1 className="text-2xl font-bold">Vue d&apos;ensemble</h1>
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-4">
         <div className="card">
           <div className="label">Alertes ouvertes</div>
           <div className={`text-3xl font-bold ${openAlerts.length > 0 ? "text-red-600" : ""}`}>
@@ -43,6 +44,19 @@ export default async function OverviewPage() {
             <Link href="/admin/conversations?statut=alerte" className="text-sm text-red-600 underline">
               Voir les conversations en alerte →
             </Link>
+          )}
+        </div>
+        <div className="card">
+          <div className="label">Demandes à traiter</div>
+          <div className={`text-3xl font-bold ${nouveauxLeads > 0 ? "text-amber-600" : ""}`}>
+            {nouveauxLeads}
+          </div>
+          {nouveauxLeads > 0 ? (
+            <Link href="/admin/leads?statut=nouveau" className="text-sm text-amber-700 underline">
+              Voir les demandes →
+            </Link>
+          ) : (
+            <div className="text-xs text-neutral-500">Tout est traité.</div>
           )}
         </div>
         <div className="card">

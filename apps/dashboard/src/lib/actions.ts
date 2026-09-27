@@ -23,7 +23,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { revalidatePath } from "next/cache";
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import {
   clearSessionCookie,
@@ -51,6 +51,7 @@ import {
   type SitePoleGroup,
   type SiteStep,
 } from "./site/content";
+import { CONV_FILTER_COOKIE, LEAD_STATUTS } from "./constants";
 import { buildSiteData } from "./site/data";
 import { createRelanceTemplate, RELANCE_TEMPLATE_NAME } from "./templates";
 // `slugify` local (clés `a_b`) ≠ slug d'URL du site (`a-b`).
@@ -603,13 +604,14 @@ export async function deleteHumanMessageAction(messageId: number, waId: string):
 
 // ── Leads ──
 
-export async function setLeadStatusAction(leadId: number, formData: FormData): Promise<void> {
+/** Appelée directement au changement du menu déroulant (pas de bouton de validation). */
+export async function setLeadStatusAction(leadId: number, statut: string): Promise<void> {
   await requireSession();
-  const statut = String(formData.get("statut") ?? "nouveau");
-  const allowed = ["nouveau", "en_cours", "devis_envoye", "gagne", "perdu"];
-  if (!allowed.includes(statut)) return;
+  if (!(LEAD_STATUTS as readonly string[]).includes(statut)) return;
   getRuntime().core.leads.setStatut(leadId, statut);
   revalidatePath("/admin/leads");
+  revalidatePath("/admin");
+  revalidatePath("/admin/conversations", "layout");
 }
 
 // ── Questions → base de connaissances ──
@@ -678,6 +680,40 @@ export async function regenerateQuestionTopicsAction(formData: FormData): Promis
 
 function questionsRedirect(message: string): never {
   redirect(`/admin/questions?msg=${encodeURIComponent(message)}`);
+}
+
+// ── Filtre de la liste des conversations ──
+
+const CONV_FILTER_TTL_S = 30 * 24 * 60 * 60;
+
+/**
+ * Applique un filtre ET le mémorise. Sans mémorisation, ouvrir une
+ * conversation puis revenir à la liste faisait repartir de zéro : il fallait
+ * re-saisir la recherche à chaque aller-retour.
+ */
+export async function filterConversationsAction(formData: FormData): Promise<void> {
+  await requireSession();
+  const q = String(formData.get("q") ?? "").trim().slice(0, 100);
+  const statut = String(formData.get("statut") ?? "");
+  const valide = ["", "alerte", "humain", "bot"].includes(statut) ? statut : "";
+
+  const store = await cookies();
+  if (!q && !valide) {
+    store.delete(CONV_FILTER_COOKIE);
+  } else {
+    store.set(CONV_FILTER_COOKIE, JSON.stringify({ q, statut: valide }), {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production" && process.env.DASHBOARD_INSECURE_COOKIE !== "1",
+      maxAge: CONV_FILTER_TTL_S,
+      path: "/",
+    });
+  }
+  const params = new URLSearchParams();
+  if (q) params.set("q", q);
+  if (valide) params.set("statut", valide);
+  const query = params.toString();
+  redirect(`/admin/conversations${query ? `?${query}` : ""}`);
 }
 
 // ── Fichiers envoyables par le bot ──
