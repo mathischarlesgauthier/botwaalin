@@ -680,6 +680,91 @@ function questionsRedirect(message: string): never {
   redirect(`/admin/questions?msg=${encodeURIComponent(message)}`);
 }
 
+// ── Fichiers envoyables par le bot ──
+
+const BOT_FILE_MAX = 30;
+
+function fichiersRedirect(message: string): never {
+  redirect(`/admin/fichiers?msg=${encodeURIComponent(message)}`);
+}
+
+/** Clé stable citée par le modèle : ascii, minuscules, sans espace. */
+function cleFromNom(nom: string): string {
+  const base = nom
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 40);
+  return base || "fichier";
+}
+
+export async function addBotFileAction(formData: FormData): Promise<void> {
+  await requireSession();
+  const { core, log } = getRuntime();
+  const nom = String(formData.get("nom") ?? "").trim().slice(0, 80);
+  const description = String(formData.get("description") ?? "").trim().slice(0, 200);
+  const file = formData.get("fichier");
+  if (!nom || !description) fichiersRedirect("⚠️ Nom et description sont obligatoires.");
+  if (!(file instanceof File) || file.size === 0) fichiersRedirect("⚠️ Aucun fichier sélectionné.");
+  if (core.botFiles.list().length >= BOT_FILE_MAX) {
+    fichiersRedirect(`⚠️ Maximum ${BOT_FILE_MAX} fichiers — supprimes-en un d'abord.`);
+  }
+
+  const check = checkOutboundMedia({ name: file.name, size: file.size, type: file.type });
+  if (!check.ok) fichiersRedirect(`⚠️ ${check.message}`);
+
+  // Clé unique : suffixe numérique si le nom est déjà pris.
+  let cle = cleFromNom(nom);
+  for (let i = 2; core.botFiles.byCle(cle) && i < 100; i++) cle = `${cleFromNom(nom)}_${i}`;
+
+  const stored = safeMediaName(randomUUID(), check.mime);
+  const dir = mediaDir();
+  try {
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, stored), Buffer.from(await file.arrayBuffer()));
+  } catch (err) {
+    log.error({ err: String(err) }, "bot_file_write_failed");
+    fichiersRedirect("⚠️ Impossible d'enregistrer le fichier sur le serveur.");
+  }
+
+  core.botFiles.create({
+    cle,
+    nom,
+    description,
+    fichier: stored,
+    mime: check.mime,
+    kind: check.kind,
+    taille: file.size,
+  });
+  logDecision(log, "bot_file_added", { cle, kind: check.kind, bytes: file.size });
+  revalidatePath("/admin/fichiers");
+  fichiersRedirect(`✅ « ${nom} » ajouté — le bot peut désormais l'envoyer.`);
+}
+
+export async function toggleBotFileAction(id: number): Promise<void> {
+  await requireSession();
+  getRuntime().core.botFiles.toggle(id);
+  revalidatePath("/admin/fichiers");
+  redirect("/admin/fichiers");
+}
+
+export async function removeBotFileAction(id: number): Promise<void> {
+  await requireSession();
+  const { core, log } = getRuntime();
+  const file = core.botFiles.get(id);
+  if (!file) fichiersRedirect("⚠️ Fichier introuvable.");
+  core.botFiles.remove(id);
+  // Le fichier disque part avec l'entrée : sinon il resterait sur le volume
+  // sans plus aucune référence.
+  await unlink(join(mediaDir(), file.fichier)).catch((err: unknown) => {
+    log.error({ err: String(err), fichier: file.fichier }, "bot_file_delete_failed");
+  });
+  revalidatePath("/admin/fichiers");
+  fichiersRedirect(`✅ « ${file.nom} » supprimé.`);
+}
+
 // ── Catalogue & tarifs ──
 
 export async function saveCatalogueAction(formData: FormData): Promise<void> {

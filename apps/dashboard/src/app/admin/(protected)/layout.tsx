@@ -15,6 +15,7 @@ const NAV = [
   { href: "/admin/questions", label: "Questions", icon: "❓" },
   { href: "/admin/apprentissage", label: "Apprentissage", icon: "🎓" },
   { href: "/admin/catalogue", label: "Catalogue & tarifs", icon: "🗂️" },
+  { href: "/admin/fichiers", label: "Fichiers du bot", icon: "📎" },
   { href: "/admin/site", label: "Site vitrine", icon: "🌐" },
   { href: "/admin/facturation", label: "Abonnement", icon: "💳" },
   { href: "/admin/reglages", label: "Réglages", icon: "⚙️" },

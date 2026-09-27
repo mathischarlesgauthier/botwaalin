@@ -15,6 +15,8 @@ import {
   withUsageMetering,
   type AlertDeps,
 } from "@arbi/core";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { SalesAgent } from "./agent";
 import { loadConfig } from "./config";
 import { createHandler } from "./handler";
@@ -87,6 +89,16 @@ async function main(): Promise<void> {
     wa,
     alertDeps,
     log,
+    // Les fichiers envoyables vivent sur le même volume que les médias reçus.
+    // Le nom vient de la base, jamais du modèle : aucune traversée possible.
+    readBotFile: async (fichier: string) => {
+      try {
+        return await readFile(join(config.MEDIA_DIR, fichier));
+      } catch (err) {
+        log.error({ err: String(err), fichier }, "bot_file_read_failed");
+        return null;
+      }
+    },
   });
 
   const handler = createHandler({

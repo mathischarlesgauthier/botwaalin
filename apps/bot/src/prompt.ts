@@ -3,6 +3,7 @@ import {
   toneInstruction,
   DOCUMENT_PROMPT_BUDGET_CHARS,
   type ConversationStateData,
+  type BotFileRow,
   type DocumentRow,
   type ExampleRow,
   type FactRow,
@@ -128,6 +129,23 @@ N'escalade JAMAIS pour : une question générale sur les offres, une comparaison
 `;
 }
 
+/**
+ * Fichiers que Jacob a déposés pour que le bot puisse les envoyer. La
+ * description est ce qui permet au modèle de choisir : sans elle, il enverrait
+ * au hasard ou pas du tout.
+ */
+function buildFilesSection(files: BotFileRow[]): string {
+  if (files.length === 0) return "";
+  const lignes = files
+    .map((f) => `- [${f.cle}] ${f.nom}${f.description ? ` — ${f.description}` : ""}`)
+    .join("\n");
+  return `
+
+# Fichiers envoyables (outil send_file)
+Ces fichiers ont été préparés par Jacob. Envoie-les avec send_file(cle) quand ils répondent vraiment à la demande du client — jamais « pour faire joli », jamais deux fois le même dans une conversation. Annonce-le en une phrase courte AVANT ou APRÈS l'envoi, sans décrire le fichier en détail.
+${lignes}`;
+}
+
 export function buildStaticPrompt(
   catalogue: string,
   pricing: PricingRow[],
@@ -135,6 +153,7 @@ export function buildStaticPrompt(
   examples: ExampleRow[] = [],
   styleGuide = "",
   autonomie: BotAutonomie = "autonome",
+  botFiles: BotFileRow[] = [],
 ): string {
   const grille = pricing
     .filter((p) => p.actif === 1)
@@ -144,6 +163,7 @@ export function buildStaticPrompt(
   const examplesSection = buildExamplesSection(examples);
   const documentsSection = buildDocumentsSection(documents);
   const autonomySection = buildAutonomySection(autonomie);
+  const filesSection = buildFilesSection(botFiles);
 
   // Aucun prix en dur dans le prompt : les montants des exemples viennent de
   // la grille — si Jacob change un tarif au dashboard, les few-shots suivent.
@@ -227,7 +247,7 @@ ${grille}
 # Catalogue (base de connaissances)
 <catalogue>
 ${catalogue}
-</catalogue>${documentsSection}`;
+</catalogue>${documentsSection}${filesSection}`;
 }
 
 /**

@@ -47,6 +47,21 @@ export interface DocumentRow {
   updatedAt: number;
 }
 
+/** Fichier de la bibliothèque que le bot peut envoyer aux clients. */
+export interface BotFileRow {
+  id: number;
+  cle: string;
+  nom: string;
+  description: string;
+  fichier: string;
+  mime: string;
+  kind: string;
+  taille: number;
+  actif: number;
+  envois: number;
+  createdAt: number;
+}
+
 export interface FactRow {
   id: number;
   waId: string;
@@ -762,6 +777,56 @@ export function createCore(options: CreateCoreOptions) {
     },
   };
 
+  // ── Fichiers envoyables par le bot ──
+  const botFilesRepo = {
+    create(input: {
+      cle: string;
+      nom: string;
+      description: string;
+      fichier: string;
+      mime: string;
+      kind: string;
+      taille: number;
+    }): void {
+      db.insert(schema.botFiles)
+        .values({ ...input, createdAt: now() })
+        .run();
+    },
+    /** Tous les fichiers, actifs d'abord, pour le back-office. */
+    list() {
+      return db.select().from(schema.botFiles).orderBy(desc(schema.botFiles.id)).all();
+    },
+    /** Uniquement ce que le bot a le droit d'envoyer, dans l'ordre d'ajout. */
+    actifs() {
+      return db
+        .select()
+        .from(schema.botFiles)
+        .where(eq(schema.botFiles.actif, 1))
+        .orderBy(asc(schema.botFiles.id))
+        .all();
+    },
+    byCle(cle: string) {
+      return db.select().from(schema.botFiles).where(eq(schema.botFiles.cle, cle)).get();
+    },
+    get(id: number) {
+      return db.select().from(schema.botFiles).where(eq(schema.botFiles.id, id)).get();
+    },
+    toggle(id: number): void {
+      const row = db.select().from(schema.botFiles).where(eq(schema.botFiles.id, id)).get();
+      if (!row) return;
+      db.update(schema.botFiles)
+        .set({ actif: row.actif === 1 ? 0 : 1 })
+        .where(eq(schema.botFiles.id, id))
+        .run();
+    },
+    remove(id: number): void {
+      db.delete(schema.botFiles).where(eq(schema.botFiles.id, id)).run();
+    },
+    countEnvoi(id: number): void {
+      sqlite.prepare(`UPDATE bot_files SET envois = envois + 1 WHERE id = ?`).run(id);
+    },
+  };
+
   // ── Notes, users, synonymes, handoffs ──
   const notesRepo = {
     add(waId: string, texte: string): void {
@@ -1189,6 +1254,7 @@ export function createCore(options: CreateCoreOptions) {
     synonyms: synonymsRepo,
     handoffs: handoffsRepo,
     documents: documentsRepo,
+    botFiles: botFilesRepo,
     facts: factsRepo,
     examples: examplesRepo,
     conversationOverview,

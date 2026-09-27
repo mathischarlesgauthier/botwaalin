@@ -119,6 +119,21 @@ CREATE INDEX IF NOT EXISTS idx_questions_norm ON questions (normalise);
 -- n'existe pas encore ici. Un index posé à cet endroit échouerait sur
 -- « no such column » et interromprait toute la migration.
 
+CREATE TABLE IF NOT EXISTS bot_files (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  cle         TEXT NOT NULL UNIQUE,
+  nom         TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  fichier     TEXT NOT NULL,
+  mime        TEXT NOT NULL,
+  kind        TEXT NOT NULL,
+  taille      INTEGER NOT NULL DEFAULT 0,
+  actif       INTEGER NOT NULL DEFAULT 1,
+  envois      INTEGER NOT NULL DEFAULT 0,
+  created_at  INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_bot_files_actif ON bot_files (actif, id);
+
 CREATE TABLE IF NOT EXISTS catalogue_versions (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
   contenu    TEXT NOT NULL,

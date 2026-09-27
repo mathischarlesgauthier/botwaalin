@@ -134,11 +134,19 @@ describe("checkOutboundMedia — photo/vidéo envoyées depuis le back-office", 
     expect(checkOutboundMedia(file("", 1000, "sans-extension")).ok).toBe(false);
   });
 
-  it("refuse un format que WhatsApp n'accepte pas à l'envoi (webp, gif, pdf)", () => {
-    for (const mime of ["image/webp", "image/gif", "application/pdf", ""]) {
+  it("refuse un format que WhatsApp n'accepte pas à l'envoi (webp, gif)", () => {
+    for (const mime of ["image/webp", "image/gif", ""]) {
       const result = checkOutboundMedia(file(mime, 1000));
       expect(result.ok).toBe(false);
     }
+  });
+
+  it("accepte un PDF comme document (plaquette envoyée par le bot)", () => {
+    expect(checkOutboundMedia(file("application/pdf", 1000, "tarifs.pdf"))).toEqual({
+      ok: true,
+      kind: "document",
+      mime: "application/pdf",
+    });
   });
 
   it("refuse un fichier vide", () => {

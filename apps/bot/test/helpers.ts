@@ -28,10 +28,13 @@ export function testCore(adminNumber?: string): Core {
 
 export interface SentRecord {
   waId: string;
-  kind: "text" | "buttons" | "menu" | "template";
+  kind: "text" | "buttons" | "menu" | "template" | "media";
   text?: string;
   templateName?: string;
   components?: unknown[];
+  /** Envois de médias : type WhatsApp et identifiant Meta. */
+  mediaKind?: string;
+  mediaId?: string;
 }
 
 /** Faux client WhatsApp : enregistre les envois, résultat paramétrable par type. */
@@ -64,6 +67,16 @@ export function fakeWa(failing: Partial<Record<SentRecord["kind"], string>> = {}
     ): Promise<SendResult> {
       const r = result("template");
       if (r.sent) sent.push({ waId, kind: "template", templateName, components });
+      return r;
+    },
+    // Le dépôt chez Meta réussit toujours ici : `failing.media` cible l'ENVOI,
+    // pour que les deux échecs restent distinguables dans les tests.
+    async uploadMedia(): Promise<string | null> {
+      return "wamid.fake-media";
+    },
+    async sendMedia(waId: string, mediaKind: string, mediaId: string): Promise<SendResult> {
+      const r = result("media");
+      if (r.sent) sent.push({ waId, kind: "media", mediaKind, mediaId });
       return r;
     },
   };

@@ -118,6 +118,30 @@ export const questions = sqliteTable("questions", {
   createdAt: integer("created_at").notNull(),
 });
 
+/**
+ * Fichiers déposés par Jacob que le BOT peut envoyer aux clients (plaquette,
+ * photo d'une réalisation, vidéo de démo). À ne pas confondre avec `documents`,
+ * qui alimentent le prompt en texte et ne sont jamais envoyés.
+ */
+export const botFiles = sqliteTable("bot_files", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  /** Identifiant stable cité par le modèle dans l'outil send_file. */
+  cle: text("cle").notNull().unique(),
+  nom: text("nom").notNull(),
+  /** Quand l'envoyer — c'est ce que lit le modèle pour décider. */
+  description: text("description").notNull().default(""),
+  /** Nom du fichier sur le volume (jamais un chemin). */
+  fichier: text("fichier").notNull(),
+  mime: text("mime").notNull(),
+  /** image | video | document — détermine le type de message WhatsApp. */
+  kind: text("kind").notNull(),
+  taille: integer("taille").notNull().default(0),
+  actif: integer("actif").notNull().default(1),
+  /** Nombre d'envois, pour repérer ce qui sert vraiment. */
+  envois: integer("envois").notNull().default(0),
+  createdAt: integer("created_at").notNull(),
+});
+
 export const catalogueVersions = sqliteTable("catalogue_versions", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   contenu: text("contenu").notNull(),

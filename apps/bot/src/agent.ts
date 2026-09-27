@@ -68,6 +68,8 @@ export interface AgentDeps {
   log: Logger;
   maxTokens?: number;
   maxIterations?: number;
+  /** Lecture d'un fichier de la bibliothèque (accès disque injecté). */
+  readBotFile?: (fichier: string) => Promise<Buffer | null>;
 }
 
 export interface AgentResult {
@@ -111,12 +113,18 @@ export class SalesAgent {
     const styleGuideRow = core.sqlite
       .prepare(`SELECT updated_at AS m FROM settings WHERE key = 'style_guide_appris'`)
       .get() as { m: number } | undefined;
+    const botFileStamp = core.sqlite
+      .prepare(`SELECT COUNT(*) AS n, COALESCE(MAX(id), 0) AS m FROM bot_files WHERE actif = 1`)
+      .get() as { n: number; m: number };
     // `bot_autonomie` fait partie de l'empreinte : sans lui, changer le réglage
     // au back-office ne régénérerait pas le prompt en cache.
     const stamp =
       `${core.catalogue.currentVersionId()}:${pricingStampRow.n}:${pricingStampRow.m}` +
       `:${docStamp.n}:${docStamp.m}:${exStamp.n}:${exStamp.m}:${styleGuideRow?.m ?? 0}` +
-      `:${core.settings.get("bot_autonomie")}`;
+      `:${core.settings.get("bot_autonomie")}` +
+      // Sans ça, un fichier ajouté ou désactivé n'apparaîtrait pas dans le
+      // prompt tant que le bot n'a pas redémarré.
+      `:${botFileStamp.n}:${botFileStamp.m}`;
     if (stamp === this.versionStamp) return;
     const catalogue = core.catalogue.current().contenu;
     const rows = core.pricing.active();
@@ -127,6 +135,7 @@ export class SalesAgent {
       core.examples.actifs(12),
       core.settings.get("style_guide_appris"),
       core.settings.get("bot_autonomie"),
+      core.botFiles.actifs(),
     );
     // INVARIANT §0.1 : allowedAmounts ne prend QUE pricing + catalogue — jamais
     // les documents/exemples appris, qui n'élargissent JAMAIS les montants
@@ -272,6 +281,7 @@ export class SalesAgent {
       core,
       wa: this.deps.wa,
       alertDeps: this.deps.alertDeps,
+      readBotFile: this.deps.readBotFile,
       state,
       log,
       flags,

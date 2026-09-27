@@ -92,6 +92,12 @@ Limites imposées par WhatsApp, vérifiées avant tout envoi : **photo JPEG/PNG 
 
 Le résumé se régénère **tout seul** à l'ouverture d'une conversation dès qu'un message est arrivé depuis le dernier calcul (colonne `conversation_state.resume_message_id`). La page s'affiche immédiatement et le résumé se met à jour en arrière-plan ; le bouton « 🔄 Régénérer » reste disponible pour forcer. Les appels LLM sont bornés à 60 s (avant, un endpoint lent pouvait bloquer une demi-heure sans rien afficher).
 
+### Fichiers envoyés par le bot
+
+**Fichiers du bot** est une bibliothèque que Jacob alimente : plaquette de tarifs, photo d'une réalisation, vidéo de démo. Chaque fichier a un **nom**, une **description qui dit quand l'envoyer**, et une clé générée automatiquement. Le bot les voit dans son prompt et les envoie lui-même avec l'outil `send_file`, quand ils répondent à la demande — jamais deux fois le même dans une conversation, et jamais une clé inventée (il reçoit la liste des clés valides en cas d'erreur).
+
+Formats : photo JPEG/PNG ≤ 5 Mo, vidéo MP4 ≤ 16 Mo, PDF ≤ 95 Mo. Un fichier peut être **désactivé** sans être supprimé (le bot cesse de le proposer), et le compteur d'envois montre ce qui sert vraiment. Les fichiers vivent sur le même volume que les médias reçus (`MEDIA_DIR`), et la suppression efface aussi le fichier du disque.
+
 ### Autonomie du bot
 
 **Réglages → Autonomie du bot** règle la fréquence du message « je transmets à Jacob » :

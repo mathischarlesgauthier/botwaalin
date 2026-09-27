@@ -64,6 +64,18 @@ export const toolDefinitions: Anthropic.Messages.Tool[] = [
     },
   },
   {
+    name: "send_file",
+    description:
+      "Envoie au client un fichier de la bibliothèque déposée par Jacob (plaquette, photo de réalisation, vidéo de démo). Utilise la clé EXACTE listée dans « Fichiers envoyables » ; n'invente jamais de clé, et n'envoie qu'un fichier réellement utile à la demande en cours. Un même fichier ne s'envoie qu'une fois par conversation.",
+    input_schema: {
+      type: "object",
+      properties: {
+        cle: { type: "string", description: "Clé du fichier, ex: plaquette_tarifs" },
+      },
+      required: ["cle"],
+    },
+  },
+  {
     name: "save_lead",
     description:
       "Enregistre le lead qualifié en base. À appeler au closing, après le récapitulatif (offre retenue, périmètre, prix ou fourchette, prochaine étape). Score 1 (froid) à 5 (prêt à acheter).",
@@ -128,10 +140,14 @@ const motifSchema = z.object({
   categorie: z.string().optional(),
 });
 
+const sendFileSchema = z.object({ cle: z.string().min(1) });
+
 export interface ToolContext {
   waId: string;
   core: Core;
   wa: WhatsAppClient;
+  /** Lecture d'un fichier de la bibliothèque, injectée (accès disque hors core). */
+  readBotFile?: (fichier: string) => Promise<Buffer | null>;
   alertDeps: AlertDeps;
   state: ConversationStateData;
   log: Logger;
@@ -164,6 +180,44 @@ export async function executeTool(
         ctx.state.offresPresentees.push(row.label);
       }
       return describeOffer(row);
+    }
+
+    case "send_file": {
+      const parsed = sendFileSchema.safeParse(input);
+      if (!parsed.success) return "Erreur : `cle` manquante.";
+      const cle = parsed.data.cle.trim();
+      const file = core.botFiles.byCle(cle);
+      if (!file || file.actif !== 1) {
+        const dispo = core.botFiles
+          .actifs()
+          .map((f) => f.cle)
+          .join(", ");
+        return `Fichier inconnu. Clés disponibles : ${dispo || "(aucune)"}. N'invente pas de clé.`;
+      }
+      if (!ctx.readBotFile) return "Envoi de fichier indisponible.";
+      const buffer = await ctx.readBotFile(file.fichier);
+      if (!buffer) {
+        log.error({ waId, cle }, "bot_file_missing_on_disk");
+        return "Le fichier n'est plus disponible sur le serveur. Continue sans l'envoyer.";
+      }
+      const mediaId = await wa.uploadMedia(buffer, file.mime, file.fichier);
+      if (!mediaId) return "WhatsApp a refusé le fichier. Continue sans l'envoyer.";
+      const kind = file.kind === "image" || file.kind === "video" ? file.kind : "document";
+      const result = await wa.sendMedia(waId, kind, mediaId, {
+        ...(kind === "document" ? { filename: `${file.nom}.pdf` } : {}),
+      });
+      if (!result.sent) {
+        logDecision(log, "bot_file_send_failed", { waId, cle, reason: result.reason });
+        return `Envoi impossible (${result.reason ?? "inconnu"}). Continue sans le fichier.`;
+      }
+      core.messages.insert(waId, "assistant", `[${file.nom} envoyé]`, result.messageId ?? null, Date.now(), {
+        type: kind,
+        file: file.fichier,
+        mime: file.mime,
+      });
+      core.botFiles.countEnvoi(file.id);
+      logDecision(log, "bot_file_sent", { waId, cle });
+      return `Fichier « ${file.nom} » envoyé au client. Enchaîne normalement, sans le renvoyer.`;
     }
 
     case "save_lead": {

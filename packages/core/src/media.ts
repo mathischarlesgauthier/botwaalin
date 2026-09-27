@@ -28,7 +28,7 @@ const EXTENSIONS: Record<string, string> = {
 };
 
 /** Type de média que le back-office peut envoyer à un client. */
-export type OutboundMediaKind = "image" | "video";
+export type OutboundMediaKind = "image" | "video" | "document";
 
 /**
  * Types MIME acceptés à l'ENVOI. Volontairement plus étroit qu'à la réception :
@@ -40,16 +40,18 @@ const OUTBOUND_MIME: Record<string, OutboundMediaKind> = {
   "image/png": "image",
   "video/mp4": "video",
   "video/3gpp": "video",
+  "application/pdf": "document",
 };
 
 /** Plafonds Meta par type sortant — au-delà, l'API rejette l'upload. */
 export const OUTBOUND_MEDIA_MAX_BYTES: Record<OutboundMediaKind, number> = {
   image: 5 * 1024 * 1024,
   video: 16 * 1024 * 1024,
+  document: 95 * 1024 * 1024,
 };
 
 /** Extensions proposées au sélecteur de fichier du back-office. */
-export const OUTBOUND_MEDIA_ACCEPT = ".jpg,.jpeg,.png,.mp4,.3gp";
+export const OUTBOUND_MEDIA_ACCEPT = ".jpg,.jpeg,.png,.mp4,.3gp,.pdf";
 
 /** `image` / `video` si le type MIME est envoyable, `null` sinon. */
 export function outboundMediaKind(mime: string): OutboundMediaKind | null {
@@ -64,6 +66,7 @@ const OUTBOUND_MIME_BY_EXT: Record<string, string> = {
   png: "image/png",
   mp4: "video/mp4",
   "3gp": "video/3gpp",
+  pdf: "application/pdf",
 };
 
 /**
@@ -77,6 +80,13 @@ export function outboundMimeFor(name: string, browserType: string): string {
   const ext = name.split(".").pop()?.toLowerCase() ?? "";
   return OUTBOUND_MIME_BY_EXT[ext] ?? browserType;
 }
+
+/** Libellé pluriel par type, pour des messages d'erreur lisibles. */
+const KIND_LABEL: Record<OutboundMediaKind, string> = {
+  image: "les photos",
+  video: "les vidéos",
+  document: "les documents",
+};
 
 export type OutboundMediaCheck =
   | { ok: true; kind: OutboundMediaKind; mime: string }
@@ -94,7 +104,7 @@ export function checkOutboundMedia(file: { name: string; size: number; type: str
   if (!kind) {
     return {
       ok: false,
-      message: "Format non supporté par WhatsApp — envoie une photo JPEG/PNG ou une vidéo MP4.",
+      message: "Format non supporté par WhatsApp — photo JPEG/PNG, vidéo MP4 ou document PDF.",
     };
   }
   const max = OUTBOUND_MEDIA_MAX_BYTES[kind];
@@ -102,7 +112,7 @@ export function checkOutboundMedia(file: { name: string; size: number; type: str
     const mb = Math.round(max / (1024 * 1024));
     return {
       ok: false,
-      message: `Fichier trop lourd : WhatsApp plafonne ${kind === "image" ? "les photos" : "les vidéos"} à ${mb} Mo.`,
+      message: `Fichier trop lourd : WhatsApp plafonne ${KIND_LABEL[kind]} à ${mb} Mo.`,
     };
   }
   return { ok: true, kind, mime };
