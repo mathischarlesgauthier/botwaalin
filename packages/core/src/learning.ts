@@ -2,7 +2,7 @@ import type Anthropic from "@anthropic-ai/sdk";
 import type { ExampleRow } from "./db";
 import { REASONING_HEADROOM } from "./llm";
 import type { Logger } from "./logger";
-import { amountsIn, PAYMENT_OUTBOUND_RE } from "./pricing";
+import { maskAmounts, PAYMENT_OUTBOUND_RE } from "./pricing";
 
 /**
  * Auto-amélioration à partir des messages envoyés manuellement par Jacob (§6) :
@@ -10,7 +10,7 @@ import { amountsIn, PAYMENT_OUTBOUND_RE } from "./pricing";
  * réutilisabilité), guide de style appris.
  */
 
-const MIN_LENGTH = 15;
+const MIN_LENGTH = 12;
 const MAX_LENGTH = 600;
 
 /** Téléphone FR : 0X XX XX XX XX, avec ou sans séparateurs. */
@@ -28,7 +28,11 @@ const EMAIL_RE = /\b[\w.+-]+@[\w-]+\.[a-z]{2,}\b/i;
  */
 export function deterministicRejectReason(reponse: string): string | null {
   const clean = reponse.trim();
-  if (amountsIn(clean).length > 0) return "montant détecté dans la réponse";
+  // Les montants ne sont PLUS un motif de rejet : ils sont masqués par
+  // `maskAmounts` avant stockage. Les rejeter revenait à jeter presque tout ce
+  // qu'un vendeur écrit — ses réponses citent des prix — et l'apprentissage ne
+  // se remplissait jamais. Restent bloquées les vraies fuites : coordonnées de
+  // paiement, téléphone, e-mail, qui atterriraient dans un prompt PARTAGÉ.
   if (PAYMENT_OUTBOUND_RE.test(clean)) return "lien ou coordonnée de paiement détecté";
   if (PHONE_FR_RE.test(clean)) return "numéro de téléphone détecté";
   if (EMAIL_RE.test(clean)) return "adresse e-mail détectée";
@@ -48,7 +52,8 @@ export function deterministicRejectReason(reponse: string): string | null {
  */
 export function deterministicRejectReasonQuestion(question: string): string | null {
   const clean = question.trim();
-  if (amountsIn(clean).length > 0) return "montant détecté dans la question";
+  // Idem : un client qui dit « j'ai 500 € de budget » ne doit pas faire perdre
+  // l'exemple. Le montant est masqué, pas rejeté.
   if (PAYMENT_OUTBOUND_RE.test(clean)) return "lien ou coordonnée de paiement détecté dans la question";
   if (PHONE_FR_RE.test(clean)) return "numéro de téléphone détecté dans la question";
   if (EMAIL_RE.test(clean)) return "adresse e-mail détectée dans la question";
@@ -121,8 +126,15 @@ export async function reviewExample(
     throw new Error("réponse LLM non exploitable (pas de JSON)");
   }
   const parsed = JSON.parse(jsonMatch[0]) as Partial<ReviewResult>;
-  const reponseReformulee = String(parsed.reponse ?? example.reponse).slice(0, MAX_LENGTH);
-  const questionReformulee = String(parsed.question ?? example.question).slice(0, MAX_LENGTH);
+  // Masquage des montants APRÈS reformulation : l'exemple sert de modèle de
+  // ton, les chiffres viennent toujours de la grille. Masquer plutôt que
+  // rejeter, sinon presque aucune réponse de vendeur ne serait apprise.
+  const reponseReformulee = maskAmounts(
+    String(parsed.reponse ?? example.reponse).slice(0, MAX_LENGTH),
+  );
+  const questionReformulee = maskAmounts(
+    String(parsed.question ?? example.question).slice(0, MAX_LENGTH),
+  );
   const theme = String(parsed.theme ?? example.theme);
 
   // Filet déterministe appliqué à nouveau : même après reformulation par le

@@ -1,6 +1,7 @@
 import {
   allowedAmounts,
   deterministicRejectReason,
+  maskAmounts,
   DOCUMENT_PROMPT_BUDGET_CHARS,
   type DocumentRow,
   type ExampleRow,
@@ -242,13 +243,14 @@ describe("INVARIANT §0.1 — allowedAmounts reste calculé sur pricing + catalo
     core.close();
   });
 
-  it("un montant écrit en toutes lettres dans un exemple appris est rejeté par le filtre déterministe (§6)", () => {
-    // Le même échappatoire concerne les exemples appris (buildExamplesSection,
-    // apps/bot/src/prompt.ts) : deterministicRejectReason (packages/core/src/
-    // learning.ts) doit rejeter la réponse de Jacob AVANT toute activation.
-    const motif = deterministicRejectReason(
-      "Pour toi je peux descendre à environ mille euros, mais ne le répète à personne.",
-    );
-    expect(motif).toMatch(/montant/);
+  it("un montant dans un exemple appris est MASQUÉ, pas rejeté (§6)", () => {
+    // L'exemple sert de modèle de ton : on garde la formulation de Jacob et on
+    // neutralise le chiffre, au lieu de jeter l'exemple entier — sinon presque
+    // rien de ce qu'écrit un vendeur n'est jamais appris.
+    const phrase = "Pour toi je peux descendre à environ mille euros, mais ne le répète à personne.";
+    expect(deterministicRejectReason(phrase)).toBeNull();
+    const masque = maskAmounts(phrase);
+    expect(masque).not.toContain("mille euros");
+    expect(masque).toContain("ne le répète à personne");
   });
 });

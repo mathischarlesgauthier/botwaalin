@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { PAYMENT_OUTBOUND_RE } from "../src/pricing";
+import { maskAmounts, PAYMENT_OUTBOUND_RE } from "../src/pricing";
 import {
   buildStyleGuide,
   deterministicRejectReason,
@@ -9,14 +9,21 @@ import {
 import { countingLlm, failingLlm, fakeLlm, silentLogger, testCore } from "./helpers";
 
 describe("deterministicRejectReason (§6 — rejet automatique, sans appel LLM)", () => {
-  it("rejette un montant", () => {
-    expect(deterministicRejectReason("C'est 1500 € pour un site vitrine complet.")).toMatch(/montant/);
+  it("ne rejette PLUS un montant : il sera masqué, pas jeté", () => {
+    // Une réponse de vendeur cite presque toujours un prix. Les rejeter
+    // revenait à n'apprendre quasiment rien de Jacob.
+    expect(deterministicRejectReason("C'est 1500 € pour un site vitrine complet.")).toBeNull();
+    expect(
+      deterministicRejectReason("On peut descendre à environ mille euros pour toi, exceptionnellement."),
+    ).toBeNull();
   });
 
-  it("rejette un montant écrit en toutes lettres (échappe à la détection sur chiffres)", () => {
-    expect(deterministicRejectReason("On peut descendre à environ mille euros pour toi, exceptionnellement.")).toMatch(
-      /montant/,
-    );
+  it("masque les montants, chiffrés comme en toutes lettres, en gardant le reste", () => {
+    const masque = maskAmounts("C'est 1500 € pour un site, ou environ mille euros en promo.");
+    expect(masque).not.toContain("1500");
+    expect(masque).not.toContain("mille euros");
+    expect(masque).toContain("pour un site");
+    expect(masque).toContain("[prix]");
   });
 
   it("rejette un lien de paiement", () => {
@@ -58,8 +65,8 @@ describe("deterministicRejectReason (§6 — rejet automatique, sans appel LLM)"
 });
 
 describe("deterministicRejectReasonQuestion (§6 — la QUESTION du client, verbatim, n'est jamais anonymisée avant l'appel LLM)", () => {
-  it("rejette un montant tapé par le client dans son propre message", () => {
-    expect(deterministicRejectReasonQuestion("Tu peux me faire ça pour 1500 € ?")).toMatch(/montant/);
+  it("ne rejette PLUS un montant tapé par le client : il est masqué", () => {
+    expect(deterministicRejectReasonQuestion("Tu peux me faire ça pour 1500 € ?")).toBeNull();
   });
 
   it("rejette un numéro de téléphone tapé par le client", () => {
@@ -76,17 +83,21 @@ describe("deterministicRejectReasonQuestion (§6 — la QUESTION du client, verb
 });
 
 describe("reviewExample (§6 — revue LLM des exemples appris)", () => {
-  it("un exemple rejetable par le filtre déterministe ne déclenche AUCUN appel LLM (coût zéro)", async () => {
+  it("une vraie fuite (lien de paiement) ne déclenche AUCUN appel LLM (coût zéro)", async () => {
     const llm = countingLlm("ignoré");
     const result = await reviewExample(
       llm,
       "modele-test",
-      { question: "Combien ça coûte ?", reponse: "1500 € pour un site vitrine complet.", theme: "site" },
+      {
+        question: "Comment je paie ?",
+        reponse: "Tu peux régler ici : checkout.stripe.com/pay/xyz, merci à toi.",
+        theme: "paiement",
+      },
       [],
       silentLogger(),
     );
     expect(result.garder).toBe(false);
-    expect(result.motif).toMatch(/montant/);
+    expect(result.motif).toMatch(/paiement/);
     expect(llm.calls).toBe(0);
   });
 

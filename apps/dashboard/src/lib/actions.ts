@@ -12,6 +12,7 @@ import {
   flattenTemplateParam,
   formatAlertText,
   logDecision,
+  maskAmounts,
   pollStripePayments,
   safeMediaName,
   summarizeConversation,
@@ -1535,6 +1536,13 @@ export async function activateExampleAction(id: number): Promise<void> {
     revalidatePath("/admin/apprentissage");
     apprentissageRedirect(`⚠️ Exemple rejeté automatiquement au lieu d'être activé : ${leak}.`);
   }
+  // Activation directe, sans passer par `reviewExample` : on neutralise ici
+  // les montants, sinon un prix brut partirait dans le prompt partagé.
+  const question = maskAmounts(row.question);
+  const reponse = maskAmounts(row.reponse);
+  if (question !== row.question || reponse !== row.reponse) {
+    core.examples.update(id, { question, reponse, theme: row.theme });
+  }
   core.examples.setStatut(id, "actif");
   revalidatePath("/admin/apprentissage");
 }
@@ -1567,7 +1575,13 @@ export async function updateExampleAction(id: number, formData: FormData): Promi
   if (leak) {
     apprentissageRedirect(`⚠️ Modification refusée : ${leak}.`);
   }
-  getRuntime().core.examples.update(id, { question, reponse, theme });
+  // Les montants sont neutralisés plutôt que refusés : l'exemple sert de
+  // modèle de ton, les prix viennent toujours de la grille.
+  getRuntime().core.examples.update(id, {
+    question: maskAmounts(question),
+    reponse: maskAmounts(reponse),
+    theme,
+  });
   revalidatePath("/admin/apprentissage");
 }
 

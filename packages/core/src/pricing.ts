@@ -196,6 +196,17 @@ export function extractPrices(text: string): Set<string> {
 }
 
 /**
+ * Neutralise les montants d'un texte sans le jeter. Sert aux exemples appris :
+ * la réponse de Jacob vaut pour son TON, pas pour ses chiffres — les rejeter
+ * revenait à ne jamais rien apprendre d'un vendeur, dont les réponses citent
+ * presque toujours un prix. Le montant devient un repère neutre, le reste est
+ * conservé tel quel.
+ */
+export function maskAmounts(text: string): string {
+  return text.replace(PRICE_SPAN_RE, "[prix]").replace(WORDS_AMOUNT_SPAN_RE, "[prix]");
+}
+
+/**
  * Ensemble des montants autorisés : prix actifs de la table pricing
  * (min, max, affichage) + montants présents dans le texte du catalogue.
  */

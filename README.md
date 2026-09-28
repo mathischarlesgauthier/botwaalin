@@ -117,6 +117,14 @@ Ce qui a été réparé : le bot déduisait « ce message a déjà eu sa répons
 
 Contexte injecté à chaque réponse : 40 dernières lignes, **résumé de la conversation** (entretenu par le bot lui-même toutes les 10 lignes au-delà de 16 — il n'existait avant que si on ouvrait la fiche au back-office), **20 faits mémorisés** (au lieu de 10 sur 20 stockés), 20 exemples appris, documents et grille. La mémoire client est réalimentée toutes les 4 minutes, sans exiger que l'état ait « progressé » — cette condition ne se déclenchait plus après les premiers messages, donc la mémoire ne se remplissait quasiment jamais.
 
+### Apprentissage (exemples appris)
+
+Chaque réponse écrite par Jacob **depuis le back-office** devient un exemple candidat : une revue automatique (toutes les 15 min) l'anonymise, la reformule en cas général et l'active. Les exemples actifs sont injectés dans le prompt comme modèles de **ton**.
+
+Les montants sont désormais **masqués** (`[prix]`) au lieu de faire rejeter l'exemple. Avant, toute réponse contenant un prix — c'est-à-dire l'essentiel de ce qu'écrit un vendeur — était éliminée, et le corpus restait vide. Restent bloquées les vraies fuites, qui atterriraient dans un prompt partagé entre tous les clients : coordonnées de paiement, téléphone, e-mail.
+
+⚠️ Seules les réponses envoyées **depuis le back-office** alimentent l'apprentissage. C'est structurel : le numéro WhatsApp est piloté par l'API Cloud, donc il ne peut pas être utilisé depuis l'application WhatsApp d'un téléphone, et les échanges du numéro personnel de Jacob ne passent pas par le webhook.
+
 ### Prix et garde-fous de sortie
 
 Le bot répond **sur sa base de connaissance** : grille tarifaire, catalogue et documents. Les blocages tarifaires de sortie (montant hors grille, service « sur devis » chiffré) ont été **retirés** — ils remplaçaient la réponse par un renvoi « contacte Jacob », y compris quand le prix cité était parfaitement officiel, et coupaient des conversations que le bot menait correctement.
