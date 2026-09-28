@@ -314,6 +314,9 @@ export default async function ConversationDetailPage({
                 accept={OUTBOUND_MEDIA_ACCEPT}
                 maxImageBytes={OUTBOUND_MEDIA_MAX_BYTES.image}
                 maxVideoBytes={OUTBOUND_MEDIA_MAX_BYTES.video}
+                maxDocumentBytes={OUTBOUND_MEDIA_MAX_BYTES.document}
+                maxTotalBytes={45 * 1024 * 1024}
+                maxFiles={10}
               />
               <input
                 name="legende"
@@ -326,7 +329,8 @@ export default async function ConversationDetailPage({
                 📎 Envoyer
               </button>
               <span className="w-full text-xs text-neutral-400">
-                Photo JPEG/PNG jusqu&apos;à 5 Mo, vidéo MP4 jusqu&apos;à 16 Mo — limites WhatsApp.
+                Plusieurs fichiers à la fois (10 max) : photo JPEG/PNG ≤ 5 Mo, vidéo MP4 ≤ 16 Mo,
+                PDF et tableurs (xlsx, xls, csv) ≤ 45 Mo. La légende accompagne le premier fichier.
               </span>
             </form>
             {/* En dehors du <form> ci-dessus : un <form> ne peut pas en contenir un autre (HTML). */}

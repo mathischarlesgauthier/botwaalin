@@ -26,9 +26,15 @@ export class DebounceQueue {
     private readonly delayMs: number,
     private readonly handler: BatchHandler,
     private readonly onError?: (err: unknown, waId: string) => void,
+    /**
+     * Appelé dès l'arrivée d'un message, AVANT tout traitement : permet de
+     * couper une réponse en cours de rédaction, devenue obsolète.
+     */
+    private readonly onIncoming?: (waId: string) => void,
   ) {}
 
   push(waId: string, item: InboundItem): void {
+    this.onIncoming?.(waId);
     const existing = this.pending.get(waId);
     if (existing) {
       existing.items.push(item);

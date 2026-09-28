@@ -84,6 +84,7 @@ CREATE TABLE IF NOT EXISTS conversation_state (
   reply_count       INTEGER NOT NULL DEFAULT 0,
   resume            TEXT NOT NULL DEFAULT '',
   resume_message_id INTEGER NOT NULL DEFAULT 0,
+  replied_message_id INTEGER NOT NULL DEFAULT 0,
   updated_at        INTEGER NOT NULL
 );
 
@@ -281,6 +282,17 @@ export function migrate(db: BetterSqlite3.Database): void {
   if (stateCols.size > 0 && !stateCols.has("resume_message_id")) {
     db.exec(
       `ALTER TABLE conversation_state ADD COLUMN resume_message_id INTEGER NOT NULL DEFAULT 0`,
+    );
+  }
+
+  // v2.4 : dernier message client réellement COUVERT par une réponse envoyée.
+  // Avant, le bot déduisait « déjà répondu » de l'ordre des id en base : un
+  // message arrivé pendant qu'il rédigeait passait derrière la ligne de
+  // réponse et n'obtenait jamais de réponse. C'est ce qui lui faisait ignorer
+  // le 2e ou 3e message d'une rafale.
+  if (stateCols.size > 0 && !stateCols.has("replied_message_id")) {
+    db.exec(
+      `ALTER TABLE conversation_state ADD COLUMN replied_message_id INTEGER NOT NULL DEFAULT 0`,
     );
   }
 

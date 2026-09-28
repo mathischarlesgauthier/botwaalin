@@ -17,17 +17,40 @@ function makeAgent(core: ReturnType<typeof testCore>, llm: ReturnType<typeof fak
 }
 
 describe("garde anti double réponse", () => {
-  it("se tait si l'historique se termine par un tour assistant (message déjà couvert)", async () => {
+  it("se tait si le dernier message client a déjà reçu sa réponse", async () => {
     const core = testCore();
     core.contacts.upsert(WA_ID);
-    core.messages.insert(WA_ID, "user", "salut");
+    const id = core.messages.insert(WA_ID, "user", "salut");
     core.messages.insert(WA_ID, "assistant", "réponse déjà envoyée qui couvre le message");
+    // C'est ce marqueur, et non l'ordre des lignes, qui fait foi.
+    core.state.setReplied(WA_ID, id);
     const llm = fakeLlmSeq(["ne devrait jamais être généré"]);
     const agent = makeAgent(core, llm);
 
     const result = await agent.respond(WA_ID, makeAnalysis());
     expect(result.text).toBeNull();
     expect(llm.calls).toBe(0);
+    core.close();
+  });
+
+  it("RÉPOND à un message arrivé pendant l'envoi de la réponse précédente", async () => {
+    // Régression rapportée : le client envoie un 2e message pendant que le bot
+    // rédige/envoie. Sa ligne se retrouve AVANT la ligne de réponse, et
+    // l'ancien critère (« le dernier message n'est pas du client ») le prenait
+    // pour un doublon — il n'obtenait jamais de réponse.
+    const core = testCore();
+    core.contacts.upsert(WA_ID);
+    const premier = core.messages.insert(WA_ID, "user", "salut");
+    const second = core.messages.insert(WA_ID, "user", "je veux des casquettes");
+    core.messages.insert(WA_ID, "assistant", "réponse au premier message seulement");
+    core.state.setReplied(WA_ID, premier); // seul le 1er a été couvert
+
+    const llm = fakeLlmSeq(["Oui, on fait des casquettes."]);
+    const agent = makeAgent(core, llm);
+    const result = await agent.respond(WA_ID, makeAnalysis());
+
+    expect(result.text).toBe("Oui, on fait des casquettes.");
+    expect(result.coveredMessageId).toBe(second);
     core.close();
   });
 

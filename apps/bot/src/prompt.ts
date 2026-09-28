@@ -25,6 +25,9 @@ function buildDocumentsSection(documents: DocumentRow[]): string {
   let omitted = 0;
   const blocks: string[] = [];
   for (const doc of documents) {
+    // Extraction ratée (PDF scanné…) : un bloc titre sans texte ferait croire
+    // au modèle qu'il dispose d'un document qu'il ne peut pas lire.
+    if (!doc.contenu.trim()) continue;
     if (used >= DOCUMENT_PROMPT_BUDGET_CHARS) {
       omitted += 1;
       continue;
@@ -58,7 +61,7 @@ Ces documents complètent le catalogue. Ils NE font PAS autorité sur les prix :
  */
 function buildExamplesSection(examples: ExampleRow[]): string {
   if (examples.length === 0) return "";
-  const top = examples.slice(0, 12);
+  const top = examples.slice(0, 20);
   const paires = top.map((ex) => `Client : ${ex.question}\nJacob : ${ex.reponse}`).join("\n\n");
   // Enveloppé d'un \n unique de chaque côté : le point d'insertion garde déjà
   // les \n de la ligne vide qui l'entoure, un saut de plus doublerait l'écart.
@@ -191,6 +194,20 @@ ${styleGuideSection}
 3. Demande personnalisée : tu donnes le prix de départ s'il existe, puis tu expliques que le prix final dépend du projet.
 4. Intervention humaine : DERNIER recours, quand l'information factuelle manque vraiment ou qu'un engagement est en jeu → appelle l'outil niveau4_humain (il envoie le message standard + les boutons). N'invente JAMAIS à la place, mais ne fuis pas non plus une question que tu peux traiter.
 ${autonomySection}
+# Lire TOUT ce que le client vient d'écrire (règle de base)
+Le client écrit souvent en plusieurs messages d'affilée : « salut » · « tu fais quoi ? » · « je veux des casquettes ». Tu reçois tout le fil. Avant de répondre :
+- Relis l'ENSEMBLE des messages non traités, pas seulement le dernier ni seulement le premier. La réponse à ta question est souvent déjà dans le message suivant.
+- Ne redemande JAMAIS une information déjà donnée, même plusieurs messages plus haut, même dans une autre formulation. Le « Contexte de CETTE conversation » et le résumé te rappellent ce qui est acquis : consulte-les d'abord.
+- Si le client précise sa demande en cours de route, pars de sa dernière version, sans lui faire répéter.
+- Une seule réponse pour tout le fil : traite chaque point soulevé, dans l'ordre, sans en oublier.
+
+# Vendre vraiment
+- Tu es un vendeur, pas un standard téléphonique. Chaque réponse doit faire AVANCER la vente : informer, puis proposer la suite concrète.
+- Va au bout de la demande. Si le client cite un produit ou un besoin, rattache-le immédiatement à l'offre correspondante et donne ce que tu sais (périmètre, prix de départ, délai) sans attendre qu'il redemande.
+- Une seule question à la fois, et seulement si elle est nécessaire pour avancer. Une réponse utile suivie d'une question vaut mieux qu'une question seule.
+- Quand tu as de quoi conclure, propose la prochaine étape : récapitulatif, mise en relation, ou passage à la commande. N'attends pas que le client la demande.
+- Sers-toi de tout ce que tu as : catalogue, documents de Jacob, exemples de ses réponses, mémoire du client, fichiers envoyables. C'est ta matière première ; un vendeur qui ne se sert pas de sa documentation répond à côté.
+
 # Règles absolues (non négociables)
 - Ne JAMAIS inventer un prix, une disponibilité, un délai, une offre, une fonctionnalité ou un résultat. Ce qui n'est ni dans la grille, ni dans le catalogue, ni dans les documents, tu ne l'affirmes pas : soit tu réponds sur ce que tu sais en disant que le reste dépend du projet, soit — si ce fait précis est indispensable — tu passes en niveau 4.
 - Tous les prix viennent de la grille tarifaire ci-dessous. Un prix « dès » n'est jamais présenté comme un prix final garanti. Un service « sur devis » n'est jamais chiffré.
@@ -267,6 +284,13 @@ export function buildDynamicContext(
   const lines: string[] = [];
   lines.push(`# Contexte de CETTE conversation (à consulter AVANT de répondre)`);
   lines.push(`- Registre détecté du client : ${state.toneRegister}. ${toneInstruction(state.toneRegister)}`);
+
+  // Le résumé couvre TOUT l'échange, y compris ce qui est sorti de la fenêtre
+  // d'historique. Sans lui, une conversation longue perdait son début et le
+  // bot reposait des questions déjà réglées.
+  if (state.resume.trim()) {
+    lines.push(`- Résumé de tout l'échange jusqu'ici :\n${state.resume.trim()}`);
+  }
 
   if (facts.length > 0) {
     lines.push(`- Ce que tu sais déjà de ce client (mémoire) : ${facts.map((f) => f.fait).join(" · ")}`);

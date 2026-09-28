@@ -77,6 +77,12 @@ export interface AgentResult {
   alertFired: boolean;
   niveau4Sent: boolean;
   /**
+   * Dernier message client couvert par cette réponse. Marqué en base une fois
+   * la réponse réellement ENVOYÉE, pour qu'un message arrivé entre-temps
+   * obtienne la sienne au lieu d'être pris pour un doublon.
+   */
+  coveredMessageId?: number;
+  /**
    * Persistance de l'état (marqueurs de style, flags groupe/cross-sell,
    * replyCount) — appelée par respond() UNIQUEMENT quand la réponse est
    * retenue, pour qu'une réponse jetée par la régénération ne pollue pas
@@ -85,13 +91,34 @@ export interface AgentResult {
   commit?: () => void;
 }
 
+/**
+ * Nombre de reprises quand le client continue d'écrire pendant que le bot
+ * rédige. Chaque nouveau message coupe la génération et relance ; au-delà, le
+ * batch suivant prendra le relais, pour qu'un client qui écrit sans arrêt
+ * n'empêche jamais une réponse de partir.
+ */
+const MAX_REGENERATIONS = 8;
+
 export class SalesAgent {
   private staticPrompt = "";
   private allowed = new Set<string>();
   private fromOnlyAmounts = new Set<string>();
   private versionStamp = "";
+  /** Générations en cours, par contact : permet de les couper à la volée. */
+  private readonly inFlight = new Map<string, AbortController>();
   private readonly maxTokens: number;
   private readonly maxIterations: number;
+
+  /**
+   * Coupe la génération en cours pour ce contact. Appelée dès qu'un nouveau
+   * message arrive : la réponse en préparation est déjà obsolète.
+   */
+  interrupt(waId: string): void {
+    const controller = this.inFlight.get(waId);
+    if (!controller) return;
+    controller.abort();
+    this.inFlight.delete(waId);
+  }
 
   constructor(private readonly deps: AgentDeps) {
     this.maxTokens = deps.maxTokens ?? 1024;
@@ -132,7 +159,7 @@ export class SalesAgent {
       catalogue,
       rows,
       core.documents.actifs(),
-      core.examples.actifs(12),
+      core.examples.actifs(20),
       core.settings.get("style_guide_appris"),
       core.settings.get("bot_autonomie"),
       core.botFiles.actifs(),
@@ -226,33 +253,77 @@ export class SalesAgent {
 
   async respond(waId: string, analysis: Analysis): Promise<AgentResult> {
     this.refreshKnowledge();
-    for (let pass = 0; pass < 2; pass++) {
+    // Un client qui écrit par rafales envoie souvent un 2e, un 3e message
+    // pendant que le bot rédige. À chaque nouveau message : la génération en
+    // cours est COUPÉE (`interrupt`), et on repart avec tout le fil — le bot
+    // répond une seule fois, en tenant compte du dernier message reçu.
+    // Le plafond évite qu'un client qui écrit sans arrêt bloque la réponse.
+    for (let pass = 0; pass < MAX_REGENERATIONS; pass++) {
       const cursor = this.deps.core.messages.lastUserMessageId(waId);
-      const result = await this.generate(waId, analysis);
+      const controller = new AbortController();
+      this.inFlight.set(waId, controller);
+      let result: AgentResult;
+      try {
+        result = await this.generate(waId, analysis, controller.signal);
+      } catch (err) {
+        if (controller.signal.aborted) {
+          logDecision(this.deps.log, "generation_interrupted", { waId, pass });
+          continue; // un nouveau message est arrivé : on repart de zéro
+        }
+        throw err;
+      } finally {
+        if (this.inFlight.get(waId) === controller) this.inFlight.delete(waId);
+      }
       if (result.text === null) return result;
-      if (pass === 0 && this.deps.core.messages.lastUserMessageId(waId) !== cursor) {
-        // Un nouveau message client est arrivé pendant la génération : on
-        // JETTE cette réponse (sans persister son état) et on régénère.
-        logDecision(this.deps.log, "regenerate_after_new_message", { waId });
+      if (this.deps.core.messages.lastUserMessageId(waId) !== cursor) {
+        // Message arrivé pendant la génération sans l'interrompre (fin de
+        // requête déjà en vol) : on JETTE cette réponse, sans persister son
+        // état, et on régénère avec l'historique complet.
+        logDecision(this.deps.log, "regenerate_after_new_message", { waId, pass });
         continue;
       }
       result.commit?.();
-      return result;
+      // Le message couvert est celui présent au DÉBUT de cette génération :
+      // un message arrivé depuis n'a pas été lu et doit rester sans réponse,
+      // pour que le batch suivant le traite.
+      return { ...result, coveredMessageId: cursor ?? 0 };
     }
+    logDecision(this.deps.log, "regeneration_limit_reached", { waId });
     return { text: null, alertFired: false, niveau4Sent: false };
   }
 
-  private async generate(waId: string, analysis: Analysis): Promise<AgentResult> {
+  private async generate(
+    waId: string,
+    analysis: Analysis,
+    signal?: AbortSignal,
+  ): Promise<AgentResult> {
     const { core, client, model, log } = this.deps;
     const state = core.state.get(waId);
     const flags = { alertFired: false, niveau4Sent: false };
-    const history = core.messages.history(waId, 20);
+    // 40 lignes, tous rôles confondus : un client qui écrit par rafales
+    // consomme 3 à 4 lignes par tour, donc 20 ne couvrait que ~5 échanges.
+    const history = core.messages.history(waId, 40);
 
-    // Si le dernier tour n'est pas un message client, le batch a déjà été
-    // couvert (régénération précédente, réponse de Jacob…) : on se tait au
-    // lieu de produire une seconde réponse au même message.
-    if (history.at(-1)?.role !== "user") {
-      logDecision(log, "history_without_pending_user_turn", { waId });
+    // Le batch a-t-il déjà reçu une réponse ? On compare le dernier message
+    // CLIENT à celui que la dernière réponse envoyée couvrait réellement.
+    //
+    // L'ancien critère (« le dernier message en base n'est pas du client »)
+    // se fiait à l'ordre des id : un message arrivé pendant que le bot
+    // rédigeait, ou pendant l'aller-retour d'envoi WhatsApp, passait derrière
+    // la ligne de réponse et n'obtenait JAMAIS de réponse. C'est ce qui
+    // faisait ignorer le 2e ou 3e message d'une rafale.
+    const dernierClient = core.messages.lastUserMessageId(waId) ?? 0;
+    if (dernierClient === 0 || dernierClient <= state.repliedMessageId) {
+      logDecision(log, "batch_already_answered", {
+        waId,
+        dernierClient,
+        deja: state.repliedMessageId,
+      });
+      return { text: null, alertFired: false, niveau4Sent: false };
+    }
+    // Jacob a repris la main après le dernier message client : le bot se tait.
+    if (history.at(-1)?.role === "human") {
+      logDecision(log, "human_took_over", { waId });
       return { text: null, alertFired: false, niveau4Sent: false };
     }
     const messages = toAnthropicMessages(history);
@@ -269,15 +340,16 @@ export class SalesAgent {
       lastClientMessage: analysis.combinedText.slice(0, 300),
     };
 
-    // Mémoire client (§5) : 10 faits les plus récents (facts.actifs trie id
-    // DESC) — jamais mis en cache (dynamicContext n'a pas de cache_control),
-    // donc facturés à plein tarif à CHAQUE message ; 10 plutôt que les 20
-    // stockables pour limiter ce coût récurrent.
+    // Mémoire client (§5) : les 20 faits stockables, tous injectés. En n'en
+    // passant que 10, la moitié de ce que Jacob voyait au back-office
+    // n'atteignait jamais le bot — « il a l'info mais ne s'en sert pas ».
+    // Ces lignes ne sont pas mises en cache, mais 20 faits courts pèsent peu
+    // face au coût d'une réponse à côté.
     const dynamicContext = buildDynamicContext(
       state,
       core.settings.get("group_link"),
       core.settings.get("contact_direct"),
-      core.facts.actifs(waId, 10),
+      core.facts.actifs(waId, 20),
     );
     const system: Anthropic.Messages.TextBlockParam[] = [
       { type: "text", text: this.staticPrompt, cache_control: { type: "ephemeral" } },
@@ -290,13 +362,18 @@ export class SalesAgent {
     let toolsUsed = false;
 
     for (let iteration = 0; iteration < this.maxIterations; iteration++) {
-      const response = await client.messages.create({
-        model,
-        max_tokens: budget,
-        system,
-        tools: toolDefinitions,
-        messages,
-      });
+      const response = await client.messages.create(
+        {
+          model,
+          max_tokens: budget,
+          system,
+          tools: toolDefinitions,
+          messages,
+        },
+        // Coupe l'appel dès qu'un nouveau message client arrive : inutile de
+        // finir (et de payer) une réponse qui sera de toute façon jetée.
+        signal ? { signal } : undefined,
+      );
 
       if (response.stop_reason === "refusal") {
         logDecision(log, "agent_refusal", { waId });

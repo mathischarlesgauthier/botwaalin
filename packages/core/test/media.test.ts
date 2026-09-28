@@ -149,6 +149,27 @@ describe("checkOutboundMedia — photo/vidéo envoyées depuis le back-office", 
     });
   });
 
+  it("accepte les tableurs (xlsx, xls, csv) comme documents", () => {
+    const xlsx = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+    expect(checkOutboundMedia(file(xlsx, 1000, "grille.xlsx"))).toEqual({
+      ok: true,
+      kind: "document",
+      mime: xlsx,
+    });
+    expect(checkOutboundMedia(file("application/vnd.ms-excel", 1000, "vieux.xls")).kind).toBe(
+      "document",
+    );
+    expect(checkOutboundMedia(file("text/csv", 1000, "export.csv")).kind).toBe("document");
+  });
+
+  it("tableur sans type MIME du navigateur : reconnu par son extension", () => {
+    // Windows ne renseigne pas toujours le type pour .xlsx / .csv.
+    const parExtension = checkOutboundMedia(file("", 2000, "tarifs 2026.xlsx"));
+    expect(parExtension.ok).toBe(true);
+    expect(parExtension.kind).toBe("document");
+    expect(checkOutboundMedia(file("", 2000, "clients.csv")).kind).toBe("document");
+  });
+
   it("refuse un fichier vide", () => {
     expect(checkOutboundMedia(file("image/jpeg", 0)).ok).toBe(false);
   });

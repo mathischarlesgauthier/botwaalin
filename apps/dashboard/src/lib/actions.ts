@@ -226,103 +226,135 @@ export async function sendHumanMessageAction(waId: string, formData: FormData): 
 /** Légende WhatsApp : 1024 caractères maximum, on coupe avant l'appel. */
 const CAPTION_MAX_CHARS = 1000;
 
+/** Nombre de fichiers acceptés en un seul envoi. */
+const MEDIA_BATCH_MAX = 10;
+
+/** Nom montré au client pour un document : le sien, nettoyé de tout chemin. */
+function documentFilename(original: string): string {
+  const base = original.split(/[/\\]/).pop() ?? "document";
+  return base.trim().slice(0, 100) || "document";
+}
+
 /**
- * Envoi d'une photo ou d'une vidéo depuis le back-office. Le fichier est
- * archivé sur le volume (même dossier que les médias reçus, donc visible dans
- * le fil), déposé chez Meta, puis envoyé. En cas d'échec, le fichier archivé
- * est supprimé : pas d'orphelin sur le volume.
+ * Envoi d'un ou PLUSIEURS fichiers depuis le back-office (photos, vidéos,
+ * PDF, tableurs). Chacun est archivé sur le volume — même dossier que les
+ * médias reçus, donc visible dans le fil —, déposé chez Meta, puis envoyé dans
+ * l'ordre de sélection. Un échec sur un fichier n'empêche pas les suivants :
+ * le bilan est rendu à la fin.
  */
 export async function sendHumanMediaAction(waId: string, formData: FormData): Promise<void> {
   await requireSession();
   const { core, wa, log } = getRuntime();
-  const file = formData.get("fichier");
+  const fichiers = formData
+    .getAll("fichier")
+    .filter((f): f is File => f instanceof File && f.size > 0);
   const legende = String(formData.get("legende") ?? "")
     .trim()
     .slice(0, CAPTION_MAX_CHARS);
 
-  if (!(file instanceof File) || file.size === 0) {
-    mediaRedirect(waId, "⚠️ Aucun fichier sélectionné.");
-  }
-  const check = checkOutboundMedia({ name: file.name, size: file.size, type: file.type });
-  if (!check.ok) {
-    mediaRedirect(waId, `⚠️ ${check.message}`);
+  if (fichiers.length === 0) mediaRedirect(waId, "⚠️ Aucun fichier sélectionné.");
+  if (fichiers.length > MEDIA_BATCH_MAX) {
+    mediaRedirect(waId, `⚠️ ${MEDIA_BATCH_MAX} fichiers maximum en une fois.`);
   }
 
-  // Type retenu par la validation : celui du navigateur, ou déduit de
-  // l'extension quand il ne l'a pas renseigné.
-  const mime = check.mime;
-  const stored = safeMediaName(randomUUID(), mime);
-  const dir = mediaDir();
-  // Un seul passage en mémoire : le même buffer sert à l'archivage et au
-  // dépôt chez Meta. Le relire du disque ferait une copie de plus (jusqu'à
-  // 16 Mo) et ajouterait un point d'échec hors de tout try.
-  const buffer = Buffer.from(await file.arrayBuffer());
-  try {
-    await mkdir(dir, { recursive: true });
-    await writeFile(join(dir, stored), buffer);
-  } catch (err) {
-    log.error({ err: String(err), waId }, "outbound_media_write_failed");
-    mediaRedirect(waId, "⚠️ Impossible d'enregistrer le fichier sur le serveur.");
-  }
+  const envoyes: string[] = [];
+  const echecs: string[] = [];
+  let horsFenetre = false;
 
-  const cleanup = async (): Promise<void> => {
-    await unlink(join(dir, stored)).catch(() => undefined);
-  };
+  for (const [index, file] of fichiers.entries()) {
+    const check = checkOutboundMedia({ name: file.name, size: file.size, type: file.type });
+    if (!check.ok) {
+      echecs.push(`${file.name} — ${check.message}`);
+      continue;
+    }
+    const mime = check.mime;
+    const stored = safeMediaName(randomUUID(), mime);
+    const dir = mediaDir();
+    // Un seul passage en mémoire : le même buffer sert à l'archivage et au
+    // dépôt chez Meta.
+    const buffer = Buffer.from(await file.arrayBuffer());
+    try {
+      await mkdir(dir, { recursive: true });
+      await writeFile(join(dir, stored), buffer);
+    } catch (err) {
+      log.error({ err: String(err), waId }, "outbound_media_write_failed");
+      echecs.push(`${file.name} — enregistrement impossible sur le serveur`);
+      continue;
+    }
+    const cleanup = async (): Promise<void> => {
+      await unlink(join(dir, stored)).catch(() => undefined);
+    };
 
-  const mediaId = await wa.uploadMedia(buffer, mime, stored);
-  if (!mediaId) {
-    await cleanup();
-    mediaRedirect(waId, "⚠️ WhatsApp a refusé le fichier (dépôt impossible) — réessaie.");
-  }
+    const mediaId = await wa.uploadMedia(buffer, mime, stored);
+    if (!mediaId) {
+      await cleanup();
+      echecs.push(`${file.name} — refusé par WhatsApp`);
+      continue;
+    }
 
-  const result = await wa.sendMedia(waId, check.kind, mediaId, {
-    caption: legende || undefined,
-    manual: true,
-  });
-  if (!result.sent) {
-    await cleanup();
-    logDecision(log, "human_media_send_failed", {
-      waId,
-      kind: check.kind,
-      reason: result.reason,
-      metaCode: result.metaCode,
+    const result = await wa.sendMedia(waId, check.kind, mediaId, {
+      // La légende n'accompagne que le PREMIER fichier : répétée sur chacun,
+      // le client la recevrait autant de fois qu'il y a de pièces jointes.
+      caption: index === 0 && legende ? legende : undefined,
+      // Sans `filename`, un document arrive chez le client sous son nom
+      // technique (un UUID) au lieu de « tarifs 2026.xlsx ».
+      ...(check.kind === "document" ? { filename: documentFilename(file.name) } : {}),
+      manual: true,
     });
-    // Hors fenêtre 24 h, aucun repli n'existe pour un média : un template ne
-    // porte une photo que si elle fait partie du modèle approuvé.
-    mediaRedirect(
-      waId,
-      result.reason === "outside_24h_window"
-        ? "⚠️ Photo/vidéo non envoyée : plus de 24 h depuis le dernier message du client. Écris-lui d'abord un message (il passera par le template de relance) ; dès qu'il répond, tu pourras envoyer des médias."
-        : `⚠️ Photo/vidéo non envoyée : ${blockedSendMessage(result.reason)}`,
-    );
+    if (!result.sent) {
+      await cleanup();
+      logDecision(log, "human_media_send_failed", {
+        waId,
+        kind: check.kind,
+        reason: result.reason,
+        metaCode: result.metaCode,
+      });
+      if (result.reason === "outside_24h_window") horsFenetre = true;
+      echecs.push(`${file.name} — ${result.reason ?? "échec d'envoi"}`);
+      continue;
+    }
+
+    // Le fichier est PARTI chez le client : on ne supprime plus rien. Si
+    // l'écriture en base casse, on le journalise sans faire croire à un échec
+    // d'envoi, ce qui pousserait à le renvoyer une seconde fois.
+    const etiquette =
+      check.kind === "image"
+        ? "[Photo envoyée]"
+        : check.kind === "video"
+          ? "[Vidéo envoyée]"
+          : `[Document envoyé : ${documentFilename(file.name)}]`;
+    try {
+      core.messages.insert(
+        waId,
+        "human",
+        index === 0 && legende ? `${etiquette} ${legende}` : etiquette,
+        result.messageId ?? null,
+        Date.now(),
+        { type: check.kind, file: stored, mime },
+      );
+    } catch (err) {
+      log.error({ err: String(err), waId, stored }, "human_media_record_failed");
+    }
+    envoyes.push(file.name);
+    logDecision(log, "human_media_sent", { waId, kind: check.kind, bytes: file.size });
   }
 
-  // Le média est PARTI chez le client : on ne supprime plus rien et on
-  // n'échoue plus l'action. Si l'écriture en base casse (disque plein, verrou),
-  // on le journalise et on prévient — mais on ne laisse pas croire à un échec
-  // d'envoi, ce qui pousserait à renvoyer la photo une seconde fois.
-  const etiquette = check.kind === "image" ? "[Photo envoyée]" : "[Vidéo envoyée]";
-  try {
-    core.messages.insert(
-      waId,
-      "human",
-      legende ? `${etiquette} ${legende}` : etiquette,
-      result.messageId ?? null,
-      Date.now(),
-      { type: check.kind, file: stored, mime },
-    );
-    core.contacts.setModeHumain(waId, true);
-  } catch (err) {
-    log.error({ err: String(err), waId, stored }, "human_media_record_failed");
-    revalidatePath(`/admin/conversations/${waId}`);
+  if (envoyes.length > 0) core.contacts.setModeHumain(waId, true);
+  revalidatePath(`/admin/conversations/${waId}`);
+
+  if (echecs.length === 0) redirect(`/admin/conversations/${waId}`);
+  if (envoyes.length === 0 && horsFenetre) {
     mediaRedirect(
       waId,
-      "⚠️ Le média est bien parti au client, mais n'a pas pu être enregistré dans l'historique. Ne le renvoie pas.",
+      "⚠️ Rien n'est parti : plus de 24 h depuis le dernier message du client. Écris-lui d'abord un message ; dès qu'il répond, tu pourras envoyer des fichiers.",
     );
   }
-  logDecision(log, "human_media_sent", { waId, kind: check.kind, bytes: file.size });
-  revalidatePath(`/admin/conversations/${waId}`);
-  redirect(`/admin/conversations/${waId}`);
+  mediaRedirect(
+    waId,
+    envoyes.length > 0
+      ? `⚠️ ${envoyes.length} fichier(s) envoyé(s) sur ${fichiers.length}. Échec : ${echecs.join(" · ")}`
+      : `⚠️ Aucun fichier envoyé. ${echecs.join(" · ")}`,
+  );
 }
 
 function mediaRedirect(waId: string, message: string): never {

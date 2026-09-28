@@ -19,6 +19,9 @@ const MIME_BY_EXT: Record<string, string> = {
   mp4: "video/mp4",
   "3gp": "video/3gpp",
   pdf: "application/pdf",
+  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  xls: "application/vnd.ms-excel",
+  csv: "text/csv",
 };
 
 /**

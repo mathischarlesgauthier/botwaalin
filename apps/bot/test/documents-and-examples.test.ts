@@ -84,9 +84,9 @@ describe("buildStaticPrompt — exemples appris (§6)", () => {
     core.close();
   });
 
-  it("injecte question/réponse de chaque exemple et limite au top 12", () => {
+  it("injecte question/réponse de chaque exemple et limite au top 20", () => {
     const core = testCore();
-    const examples = Array.from({ length: 15 }, (_, i) =>
+    const examples = Array.from({ length: 25 }, (_, i) =>
       fakeExample({ id: i + 1, question: `Question numéro ${i}`, reponse: `Réponse numéro ${i}` }),
     );
     const prompt = buildStaticPrompt(core.catalogue.current().contenu, core.pricing.active(), [], examples);
@@ -94,7 +94,8 @@ describe("buildStaticPrompt — exemples appris (§6)", () => {
     expect(prompt).toContain("Client : Question numéro 0");
     expect(prompt).toContain("Jacob : Réponse numéro 0");
     expect(prompt).toContain("Imite le TON et la STRUCTURE, jamais le contenu factuel");
-    expect(prompt).not.toContain("Question numéro 12");
+    expect(prompt).toContain("Question numéro 19");
+    expect(prompt).not.toContain("Question numéro 20");
     core.close();
   });
 });

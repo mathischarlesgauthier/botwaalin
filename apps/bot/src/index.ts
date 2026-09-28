@@ -111,9 +111,16 @@ async function main(): Promise<void> {
     llm,
     model: config.ANTHROPIC_MODEL,
   });
-  const queue = new DebounceQueue(config.DEBOUNCE_MS, handler, (err, waId) => {
-    log.error({ waId, err: String(err) }, "batch_processing_error");
-  });
+  const queue = new DebounceQueue(
+    config.DEBOUNCE_MS,
+    handler,
+    (err, waId) => {
+      log.error({ waId, err: String(err) }, "batch_processing_error");
+    },
+    // Un message qui arrive pendant que le bot rédige rend sa réponse
+    // obsolète : on coupe, et la reprise repart avec le fil complet.
+    (waId) => agent.interrupt(waId),
+  );
 
   const app = buildServer({
     config: { VERIFY_TOKEN: config.VERIFY_TOKEN, APP_SECRET: config.APP_SECRET },

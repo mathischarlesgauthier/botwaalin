@@ -25,6 +25,9 @@ const EXTENSIONS: Record<string, string> = {
   "video/mp4": "mp4",
   "video/3gpp": "3gp",
   "application/pdf": "pdf",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
+  "application/vnd.ms-excel": "xls",
+  "text/csv": "csv",
 };
 
 /** Type de média que le back-office peut envoyer à un client. */
@@ -41,17 +44,21 @@ const OUTBOUND_MIME: Record<string, OutboundMediaKind> = {
   "video/mp4": "video",
   "video/3gpp": "video",
   "application/pdf": "document",
+  // Tableurs : envoyés comme documents WhatsApp (grille tarifaire, devis…).
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "document",
+  "application/vnd.ms-excel": "document",
+  "text/csv": "document",
 };
 
 /** Plafonds Meta par type sortant — au-delà, l'API rejette l'upload. */
 export const OUTBOUND_MEDIA_MAX_BYTES: Record<OutboundMediaKind, number> = {
   image: 5 * 1024 * 1024,
   video: 16 * 1024 * 1024,
-  document: 95 * 1024 * 1024,
+  document: 45 * 1024 * 1024,
 };
 
 /** Extensions proposées au sélecteur de fichier du back-office. */
-export const OUTBOUND_MEDIA_ACCEPT = ".jpg,.jpeg,.png,.mp4,.3gp,.pdf";
+export const OUTBOUND_MEDIA_ACCEPT = ".jpg,.jpeg,.png,.mp4,.3gp,.pdf,.xlsx,.xls,.csv";
 
 /** `image` / `video` si le type MIME est envoyable, `null` sinon. */
 export function outboundMediaKind(mime: string): OutboundMediaKind | null {
@@ -67,6 +74,9 @@ const OUTBOUND_MIME_BY_EXT: Record<string, string> = {
   mp4: "video/mp4",
   "3gp": "video/3gpp",
   pdf: "application/pdf",
+  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  xls: "application/vnd.ms-excel",
+  csv: "text/csv",
 };
 
 /**
@@ -104,7 +114,8 @@ export function checkOutboundMedia(file: { name: string; size: number; type: str
   if (!kind) {
     return {
       ok: false,
-      message: "Format non supporté par WhatsApp — photo JPEG/PNG, vidéo MP4 ou document PDF.",
+      message:
+        "Format non supporté par WhatsApp — photo JPEG/PNG, vidéo MP4, PDF ou tableur (xlsx, xls, csv).",
     };
   }
   const max = OUTBOUND_MEDIA_MAX_BYTES[kind];

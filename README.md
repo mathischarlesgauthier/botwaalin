@@ -107,7 +107,15 @@ Sur la liste des **Conversations**, le filtre (recherche + statut) est **mémori
 
 **Fichiers du bot** est une bibliothèque que Jacob alimente : plaquette de tarifs, photo d'une réalisation, vidéo de démo. Chaque fichier a un **nom**, une **description qui dit quand l'envoyer**, et une clé générée automatiquement. Le bot les voit dans son prompt et les envoie lui-même avec l'outil `send_file`, quand ils répondent à la demande — jamais deux fois le même dans une conversation, et jamais une clé inventée (il reçoit la liste des clés valides en cas d'erreur).
 
-Formats : photo JPEG/PNG ≤ 5 Mo, vidéo MP4 ≤ 16 Mo, PDF ≤ 95 Mo. Un fichier peut être **désactivé** sans être supprimé (le bot cesse de le proposer), et le compteur d'envois montre ce qui sert vraiment. Les fichiers vivent sur le même volume que les médias reçus (`MEDIA_DIR`), et la suppression efface aussi le fichier du disque.
+Formats : photo JPEG/PNG ≤ 5 Mo, vidéo MP4 ≤ 16 Mo, PDF et tableurs (xlsx, xls, csv) ≤ 45 Mo. Depuis une conversation, **plusieurs fichiers peuvent partir en une fois** (10 au plus, 45 Mo cumulés) ; la légende accompagne le premier, et un document arrive chez le client sous son vrai nom. Un fichier peut être **désactivé** sans être supprimé (le bot cesse de le proposer), et le compteur d'envois montre ce qui sert vraiment. Les fichiers vivent sur le même volume que les médias reçus (`MEDIA_DIR`), et la suppression efface aussi le fichier du disque.
+
+### Mémoire et rafales de messages
+
+Un client écrit rarement d'un bloc. Le bot regroupe les messages sur **8 s de silence** (`DEBOUNCE_MS`), et surtout : **tout message arrivé pendant qu'il rédige coupe la génération en cours** et la relance avec le fil complet (jusqu'à 8 reprises). Une seule réponse part, tenant compte du dernier message reçu.
+
+Ce qui a été réparé : le bot déduisait « ce message a déjà eu sa réponse » de l'ordre des lignes en base. Un message arrivé pendant la rédaction ou pendant l'envoi passait derrière la ligne de réponse et **n'obtenait jamais de réponse** — d'où le « de quel produit tu parles ? » alors que le client venait de le dire. Une colonne `conversation_state.replied_message_id` enregistre désormais le dernier message réellement couvert.
+
+Contexte injecté à chaque réponse : 40 dernières lignes, **résumé de la conversation** (entretenu par le bot lui-même toutes les 10 lignes au-delà de 16 — il n'existait avant que si on ouvrait la fiche au back-office), **20 faits mémorisés** (au lieu de 10 sur 20 stockés), 20 exemples appris, documents et grille. La mémoire client est réalimentée toutes les 4 minutes, sans exiger que l'état ait « progressé » — cette condition ne se déclenchait plus après les premiers messages, donc la mémoire ne se remplissait quasiment jamais.
 
 ### Prix et garde-fous de sortie
 

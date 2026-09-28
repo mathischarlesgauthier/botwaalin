@@ -181,6 +181,8 @@ export interface ConversationStateData {
   resume: string;
   /** Id du dernier message pris en compte par `resume` (0 = jamais résumé). */
   resumeMessageId: number;
+  /** Id du dernier message client auquel une réponse a été ENVOYÉE (0 = aucune). */
+  repliedMessageId: number;
 }
 
 const EMPTY_STATE: Omit<ConversationStateData, "waId"> = {
@@ -200,6 +202,7 @@ const EMPTY_STATE: Omit<ConversationStateData, "waId"> = {
   replyCount: 0,
   resume: "",
   resumeMessageId: 0,
+  repliedMessageId: 0,
 };
 
 function parseJson<T>(raw: string | null | undefined, fallback: T): T {
@@ -469,6 +472,7 @@ export function createCore(options: CreateCoreOptions) {
         replyCount: row.replyCount,
         resume: row.resume,
         resumeMessageId: row.resumeMessageId,
+        repliedMessageId: row.repliedMessageId,
       };
     },
     save(state: ConversationStateData): void {
@@ -490,6 +494,7 @@ export function createCore(options: CreateCoreOptions) {
         replyCount: state.replyCount,
         resume: state.resume,
         resumeMessageId: state.resumeMessageId,
+        repliedMessageId: state.repliedMessageId,
         updatedAt: now(),
       };
       // `resume` et son marqueur de fraîcheur sont exclus de l'UPDATE : ils
@@ -517,6 +522,20 @@ export function createCore(options: CreateCoreOptions) {
                                             updated_at = excluded.updated_at`,
         )
         .run(waId, resume, messageId, now());
+    },
+    /**
+     * Marque le dernier message client réellement couvert par une réponse
+     * envoyée. Écriture ciblée : n'écrase aucun champ vivant du bot.
+     */
+    setReplied(waId: string, messageId: number): void {
+      sqlite
+        .prepare(
+          `INSERT INTO conversation_state (wa_id, replied_message_id, updated_at)
+           VALUES (?, ?, ?)
+           ON CONFLICT(wa_id) DO UPDATE SET replied_message_id = excluded.replied_message_id,
+                                            updated_at = excluded.updated_at`,
+        )
+        .run(waId, messageId, now());
     },
     reset(waId: string): void {
       db.delete(schema.conversationState).where(eq(schema.conversationState.waId, waId)).run();
@@ -983,7 +1002,13 @@ export function createCore(options: CreateCoreOptions) {
      */
     add(waId: string, fait: string, source: FactRow["source"]): FactRow | null {
       const clean = fait.trim();
-      if (!clean || amountsIn(clean).length > 0) return null;
+      if (!clean) return null;
+      // Le filtre « aucun montant » vise les faits EXTRAITS par le LLM, pour
+      // qu'un vieux prix ne se réinvite pas dans une réponse. Un fait saisi à
+      // la main par Jacob est une décision humaine : « budget validé à 3 000 € »
+      // doit pouvoir être mémorisé, sinon l'information la plus utile d'une
+      // négociation est justement celle qu'on ne peut pas noter.
+      if (source !== "jacob" && amountsIn(clean).length > 0) return null;
       const normalized = normalizeText(clean);
       const active = activeFactRows(waId);
       const duplicate = active.find((f) => normalizeText(f.fait) === normalized);

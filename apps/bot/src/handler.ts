@@ -3,6 +3,7 @@ import {
   billingStatus,
   extractClientFacts,
   logDecision,
+  summarizeConversation,
   normalizeText,
   triggerAlert,
   type AlertDeps,
@@ -17,20 +18,17 @@ import type { InboundItem } from "./queue";
 
 /**
  * Garde-fou de coût de l'extraction de mémoire client (§5) : au plus un
- * déclenchement toutes les 10 minutes par contact. Mémoire du process (un
+ * déclenchement toutes les 4 minutes par contact. Mémoire du process (un
  * seul processus bot en prod, le dashboard n'appelle jamais cette fonction) :
  * un redémarrage remet le throttle à zéro, impact négligeable.
  */
-const FACTS_EXTRACTION_INTERVAL_MS = 10 * 60 * 1000;
+const FACTS_EXTRACTION_INTERVAL_MS = 4 * 60 * 1000;
 const factsExtractionThrottle = new Map<string, number>();
 
 /**
  * Tâche de fond, jamais awaited dans le chemin de réponse : extrait des faits
- * durables de la conversation et les mémorise. Ne se déclenche QUE si la
- * conversation a progressé (pas un simple échange de politesse) et pas plus
- * d'une fois toutes les 10 minutes par contact — deux gardes de coût
- * indépendantes du filtre déterministe déjà présent dans core.facts.add()
- * (rejette tout fait contenant un montant, même si le LLM désobéit).
+ * durables de la conversation et les mémorise, au plus une fois toutes les
+ * 4 minutes par contact.
  */
 function scheduleFactsExtraction(
   core: Core,
@@ -40,14 +38,18 @@ function scheduleFactsExtraction(
   waId: string,
   analysis: Analysis,
 ): void {
-  if (!analysis.progressed) return;
+  // Plus conditionné à `progressed` : ce drapeau ne repasse à true que
+  // lorsqu'un champ d'état passe de vide à rempli, donc plus jamais après
+  // deux ou trois messages. Le bot n'extrayait alors qu'UNE fois par
+  // conversation, sur un transcript quasi vide — d'où l'impression qu'il ne
+  // retient rien. Seul le throttle limite désormais le coût.
   const lastRun = factsExtractionThrottle.get(waId) ?? 0;
   const nowTs = Date.now();
   if (nowTs - lastRun < FACTS_EXTRACTION_INTERVAL_MS) return;
   factsExtractionThrottle.set(waId, nowTs);
 
   const transcript = core.messages
-    .history(waId, 20)
+    .history(waId, 40)
     .map((m) => `${m.role}: ${m.contenu}`)
     .join("\n");
   const existingFacts = core.facts.actifs(waId, 20).map((f) => f.fait);
@@ -57,6 +59,42 @@ function scheduleFactsExtraction(
     })
     .catch((err) => {
       log.error({ waId, err: String(err) }, "extract_client_facts_task_failed");
+    });
+}
+
+/**
+ * Résumé de conversation entretenu par le BOT lui-même. Sans ça, il n'existait
+ * que si Jacob ouvrait la fiche au back-office : une conversation jamais
+ * consultée n'avait aucun résumé, et tout ce qui sortait de la fenêtre
+ * d'historique était perdu pour le modèle.
+ *
+ * Déclenché au-delà de SUMMARY_MIN_MESSAGES lignes — avant, l'historique
+ * suffit — et au plus une fois par tranche de SUMMARY_EVERY_MESSAGES.
+ */
+const SUMMARY_MIN_MESSAGES = 16;
+const SUMMARY_EVERY_MESSAGES = 10;
+
+function scheduleSummaryRefresh(
+  core: Core,
+  llm: Anthropic,
+  model: string,
+  log: Logger,
+  waId: string,
+): void {
+  const dernier = core.messages.lastMessageId(waId);
+  const state = core.state.get(waId);
+  const transcript = core.messages.history(waId, 60);
+  if (transcript.length < SUMMARY_MIN_MESSAGES) return;
+  if (dernier - state.resumeMessageId < SUMMARY_EVERY_MESSAGES) return;
+
+  const contact = core.contacts.get(waId);
+  void summarizeConversation(llm, model, transcript, log, contact?.nom)
+    .then((resume) => {
+      core.state.setResume(waId, resume, dernier);
+      logDecision(log, "summary_refreshed_by_bot", { waId, couvertJusqua: dernier });
+    })
+    .catch((err) => {
+      log.error({ waId, err: String(err) }, "summary_refresh_failed");
     });
 }
 
@@ -249,16 +287,27 @@ export function createHandler(deps: HandlerDeps) {
     const result = await agent.respond(waId, analysis);
     if (result.text) {
       const sendResult = await wa.sendText(waId, result.text);
-      if (sendResult.sent) core.messages.insert(waId, "assistant", result.text);
+      if (sendResult.sent) {
+        core.messages.insert(waId, "assistant", result.text);
+        // Marqué APRÈS l'envoi : si l'envoi échoue, le message client reste
+        // « non répondu » et le prochain batch le reprendra.
+        if (result.coveredMessageId) core.state.setReplied(waId, result.coveredMessageId);
+      }
       logDecision(log, "reply_dispatched", { waId, sent: sendResult.sent, reason: sendResult.reason });
     } else {
       logDecision(log, "no_reply", { waId, niveau4: result.niveau4Sent, alerte: result.alertFired });
     }
-    core.questions.record({ ...questionDraft, repondue: !result.alertFired && !result.niveau4Sent });
+    // Une réponse jamais envoyée n'est pas une question traitée : sans ça, le
+    // back-office comptait comme répondues des questions restées en plan.
+    core.questions.record({
+      ...questionDraft,
+      repondue: result.text !== null && !result.alertFired && !result.niveau4Sent,
+    });
 
     // ── Mémoire client (§5) : tâche de fond, après l'envoi de la réponse ──
     if (deps.llm && deps.model) {
       scheduleFactsExtraction(core, deps.llm, deps.model, log, waId, analysis);
+      scheduleSummaryRefresh(core, deps.llm, deps.model, log, waId);
     }
   };
 }

@@ -84,7 +84,11 @@ describe("mémoire client — garde-fou de coût de l'extraction en tâche de fo
     return { handle, wa };
   }
 
-  it("ne se déclenche PAS quand la conversation n'a pas progressé (simple accusé de réception)", async () => {
+  it("se déclenche même sans progression d'état (le contexte s'enrichit quand même)", async () => {
+    // L'ancien garde exigeait `analysis.progressed`, qui ne repasse jamais à
+    // true après les premiers messages : la mémoire n'était alimentée qu'une
+    // fois par conversation, sur un transcript quasi vide. Seul le throttle
+    // limite désormais le coût.
     const waId = freshWaId();
     const core = testCore();
     core.contacts.upsert(waId);
@@ -94,7 +98,7 @@ describe("mémoire client — garde-fou de coût de l'extraction en tâche de fo
     core.messages.insert(waId, "user", "ok");
     await handle(waId, [{ text: "ok" }]);
 
-    expect(extractionLlm.calls).toBe(0);
+    expect(extractionLlm.calls).toBeGreaterThan(0);
     core.close();
   });
 

@@ -86,6 +86,8 @@ export const conversationState = sqliteTable("conversation_state", {
   resume: text("resume").notNull().default(""),
   /** Id du dernier message couvert par `resume` : au-delà, le résumé est périmé. */
   resumeMessageId: integer("resume_message_id").notNull().default(0),
+  /** Id du dernier message client auquel une réponse a RÉELLEMENT été envoyée. */
+  repliedMessageId: integer("replied_message_id").notNull().default(0),
   updatedAt: integer("updated_at").notNull(),
 });
 
