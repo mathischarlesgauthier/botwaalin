@@ -109,6 +109,12 @@ Sur la liste des **Conversations**, le filtre (recherche + statut) est **mémori
 
 Formats : photo JPEG/PNG ≤ 5 Mo, vidéo MP4 ≤ 16 Mo, PDF ≤ 95 Mo. Un fichier peut être **désactivé** sans être supprimé (le bot cesse de le proposer), et le compteur d'envois montre ce qui sert vraiment. Les fichiers vivent sur le même volume que les médias reçus (`MEDIA_DIR`), et la suppression efface aussi le fichier du disque.
 
+### Prix et garde-fous de sortie
+
+Le bot répond **sur sa base de connaissance** : grille tarifaire, catalogue et documents. Les blocages tarifaires de sortie (montant hors grille, service « sur devis » chiffré) ont été **retirés** — ils remplaçaient la réponse par un renvoi « contacte Jacob », y compris quand le prix cité était parfaitement officiel, et coupaient des conversations que le bot menait correctement.
+
+Ce qui subsiste : le **filet anti-encaissement** (IBAN, RIB, lien de paiement, adresse crypto ne partent jamais, même hallucinés — risque de fraude, pas de confort), et le **garde FROM**, qui fait reformuler un « dès 750 € » présenté comme prix ferme puis laisse partir la réponse. Le cadrage des prix repose désormais sur le prompt : la grille reste la seule source autorisée. Un montant absent de la grille est **journalisé** (`price_out_of_grid`) sans bloquer, ce qui permet de surveiller sans casser la conversation.
+
 ### Autonomie du bot
 
 **Réglages → Autonomie du bot** règle la fréquence du message « je transmets à Jacob » :

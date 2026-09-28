@@ -164,7 +164,7 @@ describe("INVARIANT §0.1 — allowedAmounts reste calculé sur pricing + catalo
     core.close();
   });
 
-  it("guardReply bloque toujours un montant qui n'existe que dans un document uploadé", async () => {
+  it("un montant d'un document uploadé n'entre PAS dans les montants autorisés", async () => {
     const core = testCore();
     core.documents.create({
       nom: "Barème interne",
@@ -185,16 +185,22 @@ describe("INVARIANT §0.1 — allowedAmounts reste calculé sur pricing + catalo
       log: silentLogger(),
     });
 
+    // L'invariant porte sur `allowedAmounts` : un document ne peut JAMAIS
+    // élargir les montants considérés comme officiels. Le blocage tarifaire en
+    // sortie, lui, a été retiré — le bot répond sur sa base de connaissance.
+    const allowed = (agent as unknown as { allowed: Set<string> }).allowed;
+    expect(allowed.has("987654")).toBe(false);
+
     const result = await agent.guardReply(
       "33612345678",
       "Pour toi ce sera 987654 €.",
       makeAnalysis(),
     );
-    expect(result.blocked).toBe(true);
+    expect(result.blocked).toBe(false);
     core.close();
   });
 
-  it("un montant écrit en toutes lettres dans un document uploadé reste bloqué en sortie", async () => {
+  it("un montant en toutes lettres d'un document n'est pas non plus autorisé", async () => {
     const core = testCore();
     core.documents.create({
       nom: "Barème interne",
@@ -220,15 +226,18 @@ describe("INVARIANT §0.1 — allowedAmounts reste calculé sur pricing + catalo
 
     // Le prompt statique injecte bien le document (contexte complémentaire)…
     expect((agent as unknown as { staticPrompt: string }).staticPrompt).toContain("cent cinquante euros");
-    // … mais si le modèle reprend ce montant en toutes lettres dans sa
-    // réponse, le garde-fou de sortie le bloque comme n'importe quel prix
-    // hors grille (amountsIn détecte aussi les montants en toutes lettres).
+    // … sans que son montant devienne pour autant un prix officiel
+    // (amountsIn détecte aussi les montants en toutes lettres).
+    const allowed = (agent as unknown as { allowed: Set<string> }).allowed;
+    expect(allowed.has("850")).toBe(false);
+
+    // La sortie n'est plus bloquée : seul le filet anti-encaissement subsiste.
     const result = await agent.guardReply(
       "33612345678",
       "Pour toi ce sera huit cent cinquante euros, en exclusivité.",
       makeAnalysis(),
     );
-    expect(result.blocked).toBe(true);
+    expect(result.blocked).toBe(false);
     core.close();
   });
 

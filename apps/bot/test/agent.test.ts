@@ -107,43 +107,35 @@ describe("filet anti-encaissement", () => {
 });
 
 describe("gardes tarifaires par type", () => {
-  it("QUOTE jamais chiffré : le montant ne part pas, et le client n'est PAS renvoyé vers Jacob", async () => {
+  it("service sur devis : la réponse du bot part telle quelle, sans renvoi vers Jacob", async () => {
+    // Décision produit : plus aucun blocage tarifaire. Le renvoi automatique
+    // cassait des conversations que le bot menait bien, y compris sur des prix
+    // parfaitement officiels.
     const core = testCore();
     core.contacts.upsert(WA_ID);
     core.messages.insert(WA_ID, "user", "combien pour une LLC ?");
-    // 2 500 € est un montant autorisé (e-commerce avancé) : seul le contrôle
-    // d'association service↔montant peut l'attraper. Le modèle s'entête ici,
-    // donc la reprise échoue et la réponse de repli part.
-    const llm = fakeLlmSeq([
-      "En général ça tourne autour de 2 500 €.",
-      "En général ça tourne autour de 2 500 €.",
-    ]);
+    const llm = fakeLlmSeq(["En général ça tourne autour de 2 500 €."]);
     const agent = makeAgent(core, llm);
 
     const result = await agent.respond(
       WA_ID,
       makeAnalysis({ serviceKey: "societe_llc_usa", categorie: "Société", intent: "tarif" }),
     );
-    expect(result.text).not.toContain("2 500");
-    // Le garde-fou ne coupe plus la conversation : pas de numéro, le bot relance.
+    expect(result.text).toContain("2 500");
     expect(result.text).not.toContain(core.settings.get("contact_direct"));
-    expect(result.text).toContain("dis-m'en un peu plus");
-    expect(result.alertFired).toBe(true);
+    expect(result.alertFired).toBe(false);
     core.close();
   });
 
-  it("prix hors grille : une seconde tentative permet au bot de répondre lui-même", async () => {
+  it("montant hors grille : plus de blocage, la réponse du bot passe", async () => {
     const core = testCore();
     core.contacts.upsert(WA_ID);
     core.messages.insert(WA_ID, "user", "c'est combien un logo ?");
-    // Première réponse refusée (montant inventé), seconde correcte : c'est
-    // elle qui doit partir, sans aucun renvoi vers Jacob.
-    const llm = fakeLlmSeq(["Un logo c'est 137 €.", "Un logo c'est 50 €."]);
+    const llm = fakeLlmSeq(["Un logo c'est 137 €."]);
     const agent = makeAgent(core, llm);
 
     const result = await agent.respond(WA_ID, makeAnalysis({ serviceKey: "logo", intent: "tarif" }));
-    expect(result.text).toContain("50");
-    expect(result.text).not.toContain("137");
+    expect(result.text).toContain("137");
     expect(result.text).not.toContain(core.settings.get("contact_direct"));
     core.close();
   });

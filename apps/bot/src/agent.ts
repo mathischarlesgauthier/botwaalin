@@ -76,8 +76,6 @@ export interface AgentResult {
   text: string | null;
   alertFired: boolean;
   niveau4Sent: boolean;
-  /** Réponse écartée par un garde-fou prix : régénérable une fois. */
-  priceBlocked?: boolean;
   /**
    * Persistance de l'état (marqueurs de style, flags groupe/cross-sell,
    * replyCount) — appelée par respond() UNIQUEMENT quand la réponse est
@@ -175,9 +173,15 @@ export class SalesAgent {
   }
 
   /**
-   * Garde-fou déterministe de sortie : liens/coordonnées de paiement, montant
-   * cité pour un service sur devis, montants hors grille. Toute violation
-   * remplace la réponse par un renvoi vers Jacob + alerte.
+   * Garde-fou déterministe de sortie. Il ne reste QUE le filet
+   * anti-encaissement : aucun IBAN, RIB, lien de paiement ou adresse crypto ne
+   * doit partir à un client, même halluciné — c'est un risque de fraude, pas
+   * un confort de rédaction.
+   *
+   * Les blocages tarifaires ont été retirés sur décision de Jacob : ils
+   * remplaçaient la réponse par un renvoi vers lui et cassaient des
+   * conversations que le bot menait correctement. Le bot répond maintenant
+   * sur sa base de connaissance.
    */
   async guardReply(
     waId: string,
@@ -203,78 +207,33 @@ export class SalesAgent {
       };
     }
 
-    const serviceRow = analysis.serviceKey ? core.pricing.byKey(analysis.serviceKey) : undefined;
-    // Un service « sur devis » ne doit jamais être chiffré, même avec un
-    // montant valide ailleurs dans la grille : le client le prendrait pour le
-    // prix de CE service. La réponse est écartée, mais le bot la refait
-    // (cf. respond) au lieu de renvoyer le client vers Jacob.
-    if (serviceRow?.actif === 1 && serviceRow.type === "QUOTE" && amountsIn(reply).length > 0) {
-      logDecision(log, "price_guard_blocked", {
-        waId,
-        motif: "montant_cite_pour_service_sur_devis",
-        service: serviceRow.serviceKey,
-      });
-      return this.blockedPriceReply(waId, analysis, "montant cité pour un service sur devis");
-    }
-
+    // Les blocages tarifaires (service sur devis chiffré, montant hors grille)
+    // ont été RETIRÉS sur décision explicite de Jacob : ils remplaçaient la
+    // réponse par un renvoi vers lui, y compris quand le bot citait un prix
+    // parfaitement officiel, et coupaient des conversations qu'il maîtrisait.
+    // Le bot répond désormais sur sa base de connaissance. Les prix restent
+    // cadrés côté prompt (grille = seule source) et le garde FROM continue de
+    // faire régénérer un « dès X » présenté comme prix ferme — sans jamais
+    // renvoyer le client ailleurs. Un montant hors grille est simplement
+    // journalisé, pour rester visible sans bloquer.
     const foreign = findForeignPrices(reply, this.allowed);
     if (foreign.length > 0) {
-      logDecision(log, "price_guard_blocked", { waId, foreign });
-      return this.blockedPriceReply(
-        waId,
-        analysis,
-        "prix demandé non présent et non calculable (garde-fou)",
-      );
+      logDecision(log, "price_out_of_grid", { waId, foreign });
     }
 
     return { text: reply, blocked: false };
   }
 
-  /**
-   * Réponse jetée pour cause de prix non autorisé. Jacob est prévenu, mais le
-   * CLIENT n'est plus renvoyé vers lui : le bot reste dans la conversation et
-   * relance sur ce qu'il sait faire. Un renvoi ici était doublement mauvais —
-   * il coupait une conversation que le bot maîtrisait, et il se déclenchait
-   * aussi sur des réponses parfaitement correctes.
-   */
-  private async blockedPriceReply(
-    waId: string,
-    analysis: Analysis,
-    motif: string,
-  ): Promise<{ text: string; blocked: boolean }> {
-    await triggerAlert(this.deps.alertDeps, {
-      waId,
-      motif,
-      intention: analysis.intent,
-      categorie: analysis.categorie,
-      dernierMessage: analysis.combinedText.slice(0, 300),
-    });
-    return {
-      text: "Pour ce point précis, le tarif dépend de ce que tu veux exactement — dis-m'en un peu plus sur ton besoin et je te détaille tout de suite ce qui est inclus.",
-      blocked: true,
-    };
-  }
-
   async respond(waId: string, analysis: Analysis): Promise<AgentResult> {
     this.refreshKnowledge();
-    let priceHint = "";
-    for (let pass = 0; pass < 3; pass++) {
+    for (let pass = 0; pass < 2; pass++) {
       const cursor = this.deps.core.messages.lastUserMessageId(waId);
-      const result = await this.generate(waId, analysis, priceHint);
+      const result = await this.generate(waId, analysis);
       if (result.text === null) return result;
       if (pass === 0 && this.deps.core.messages.lastUserMessageId(waId) !== cursor) {
         // Un nouveau message client est arrivé pendant la génération : on
         // JETTE cette réponse (sans persister son état) et on régénère.
         logDecision(this.deps.log, "regenerate_after_new_message", { waId });
-        continue;
-      }
-      // Prix hors grille : on redonne sa chance au bot avec une consigne
-      // explicite, au lieu de sortir directement la réponse de repli. Une
-      // seule reprise — au-delà, le repli part.
-      if (result.priceBlocked && !priceHint) {
-        logDecision(this.deps.log, "regenerate_after_price_guard", { waId });
-        priceHint =
-          "IMPORTANT : ta réponse précédente a été refusée car elle citait un montant absent de la grille tarifaire. Reformule en n'utilisant QUE les montants de la grille ci-dessus, ou sans aucun montant si tu n'en as pas de valide. Réponds quand même sur le fond, complètement, sans renvoyer le client vers quelqu'un d'autre.";
         continue;
       }
       result.commit?.();
@@ -283,7 +242,7 @@ export class SalesAgent {
     return { text: null, alertFired: false, niveau4Sent: false };
   }
 
-  private async generate(waId: string, analysis: Analysis, priceHint = ""): Promise<AgentResult> {
+  private async generate(waId: string, analysis: Analysis): Promise<AgentResult> {
     const { core, client, model, log } = this.deps;
     const state = core.state.get(waId);
     const flags = { alertFired: false, niveau4Sent: false };
@@ -322,7 +281,7 @@ export class SalesAgent {
     );
     const system: Anthropic.Messages.TextBlockParam[] = [
       { type: "text", text: this.staticPrompt, cache_control: { type: "ephemeral" } },
-      { type: "text", text: priceHint ? `${dynamicContext}\n${priceHint}` : dynamicContext },
+      { type: "text", text: dynamicContext },
     ];
 
     let styleRetried = false;
@@ -416,7 +375,10 @@ export class SalesAgent {
         logDecision(log, "style_violation_sent", { waId, violations: styleCheck.violations });
       }
 
-      // Prix « dès » présenté comme prix ferme : une régénération, sinon blocage.
+      // Prix « dès » présenté comme prix ferme : une régénération pour le
+      // formuler correctement. Si le modèle s'entête, la réponse part quand
+      // même — mieux vaut un « à partir de » manquant qu'une conversation
+      // interrompue par un renvoi.
       const fromViolations = this.fromViolations(text);
       if (fromViolations.length > 0 && !fromRetried) {
         fromRetried = true;
@@ -429,19 +391,7 @@ export class SalesAgent {
         continue;
       }
       if (fromViolations.length > 0) {
-        logDecision(log, "from_price_blocked", { waId, amounts: fromViolations });
-        const blocked = await this.blockedPriceReply(
-          waId,
-          analysis,
-          "prix de départ présenté comme un prix final (garde-fou)",
-        );
-        flags.alertFired = true;
-        return {
-          text: blocked.text,
-          alertFired: true,
-          niveau4Sent: false,
-          commit: () => this.persistTurn(state, blocked.text),
-        };
+        logDecision(log, "from_price_not_qualified", { waId, amounts: fromViolations });
       }
 
       // Lien du groupe privé : jamais deux fois dans une conversation.
@@ -477,7 +427,6 @@ export class SalesAgent {
         text: guarded.text,
         alertFired: flags.alertFired,
         niveau4Sent: false,
-        priceBlocked: guarded.blocked,
         commit: () => this.persistTurn(state, guarded.text),
       };
     }
