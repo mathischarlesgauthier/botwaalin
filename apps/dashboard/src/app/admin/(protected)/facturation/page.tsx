@@ -7,7 +7,7 @@ import {
   nextBillingDate,
   SUBSCRIPTION_CENTS,
 } from "@arbi/core";
-import { checkStripePaymentsAction } from "@/lib/actions";
+import { addManualPaymentAction, checkStripePaymentsAction } from "@/lib/actions";
 import { requireSession } from "@/lib/auth";
 import { getRuntime } from "@/lib/core";
 
@@ -27,7 +27,7 @@ function dateFr(ts: number): string {
 const TX_LABELS: Record<string, string> = {
   credit_initial: "Crédit de bienvenue (premier mois inclus)",
   abonnement: "Abonnement mensuel",
-  paiement: "Paiement reçu (Stripe)",
+  paiement: "Paiement reçu",
   ajustement: "Ajustement",
 };
 
@@ -188,6 +188,40 @@ export default async function FacturationPage({
                 🔄 Vérifier mes paiements
               </button>
             </form>
+            <details className="text-xs text-neutral-500">
+              <summary className="cursor-pointer">Paiement reçu mais pas détecté ?</summary>
+              <form action={addManualPaymentAction} className="mt-2 space-y-2">
+                <p>
+                  Un règlement par lien unique ne crée pas de facture Stripe, donc la vérification
+                  automatique ne le voit pas. Enregistre-le ici : le solde est crédité tout de
+                  suite.
+                </p>
+                <div className="flex gap-2">
+                  <input
+                    name="montant"
+                    type="number"
+                    step="0.01"
+                    min="0.01"
+                    defaultValue={(SUBSCRIPTION_CENTS / 100).toFixed(2)}
+                    className="input w-24"
+                    aria-label="Montant en euros"
+                    required
+                  />
+                  <input
+                    name="note"
+                    className="input flex-1"
+                    placeholder="Référence (facultatif)"
+                    maxLength={120}
+                  />
+                </div>
+                <button
+                  type="submit"
+                  className="w-full rounded-lg border border-neutral-300 px-4 py-2 text-sm hover:bg-neutral-50"
+                >
+                  ➕ Enregistrer ce paiement
+                </button>
+              </form>
+            </details>
           </div>
         </div>
       </div>

@@ -1615,6 +1615,52 @@ export async function regenerateStyleGuideAction(): Promise<void> {
 
 // ── Facturation ──
 
+/** Montant maximal d'un paiement enregistré à la main (garde-fou de saisie). */
+const PAIEMENT_MANUEL_MAX_CENTS = 100_000;
+
+/**
+ * Enregistre un paiement REÇU que la sonde Stripe n'a pas vu. Cas réel : un
+ * règlement par lien de paiement unique ne génère pas de facture, or la sonde
+ * ne parcourt que les factures — l'argent arrive, le solde reste négatif.
+ *
+ * La ligne est tracée comme « enregistré manuellement » et visible dans
+ * l'historique : elle se distingue d'un encaissement Stripe vérifié.
+ */
+export async function addManualPaymentAction(formData: FormData): Promise<void> {
+  await requireSession();
+  const { core, log } = getRuntime();
+  const euros = Number.parseFloat(String(formData.get("montant") ?? "").replace(",", "."));
+  if (!Number.isFinite(euros) || euros <= 0) {
+    redirect("/admin/facturation?msg=" + encodeURIComponent("⚠️ Montant invalide."));
+  }
+  const cents = Math.round(euros * 100);
+  if (cents > PAIEMENT_MANUEL_MAX_CENTS) {
+    redirect("/admin/facturation?msg=" + encodeURIComponent("⚠️ Montant trop élevé — vérifie la saisie."));
+  }
+  const note = String(formData.get("note") ?? "").trim().slice(0, 120);
+  const now = Date.now();
+  core.sqlite
+    .prepare(
+      `INSERT INTO billing_transactions (type, montant_cents, description, ref, created_at)
+       VALUES ('paiement', ?, ?, ?, ?)`,
+    )
+    .run(
+      cents,
+      note ? `Paiement enregistré manuellement — ${note}` : "Paiement enregistré manuellement",
+      `manuel:${now}`,
+      now,
+    );
+  logDecision(log, "manual_payment_recorded", { cents, note });
+  revalidatePath("/admin/facturation");
+  revalidatePath("/admin", "layout");
+  redirect(
+    "/admin/facturation?msg=" +
+      encodeURIComponent(
+        `✅ Paiement de ${euros.toLocaleString("fr-FR", { minimumFractionDigits: 2 })} € enregistré — le solde est à jour.`,
+      ),
+  );
+}
+
 export async function checkStripePaymentsAction(): Promise<void> {
   await requireSession();
   const { core, log } = getRuntime();
