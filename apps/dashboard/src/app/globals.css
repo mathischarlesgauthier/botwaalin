@@ -1,50 +1,780 @@
+/*
+ * Back-office ARBI JACOB — direction graphique tirée du logo (maquette
+ * arbi-jacob-dashboard.html) : noir profond, argent brossé, rouge brillant,
+ * titres Orbitron, texte Exo 2. Ce fichier n'est chargé que par /admin ;
+ * le site vitrine a son propre site.css.
+ *
+ * Les pages utilisent les couleurs Tailwind d'origine (neutral, white, red,
+ * amber…). Plutôt que de réécrire chaque page, la palette est redéfinie ici
+ * en version sombre : l'échelle neutral est inversée (50 = presque noir,
+ * 900 = presque blanc) et les couleurs d'état deviennent des teintes
+ * sombres lisibles sur fond noir.
+ */
+@import url("https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;800&family=Exo+2:wght@400;500;600;700;800&family=Share+Tech+Mono&display=swap");
 @import "tailwindcss";
 
+@theme {
+  --font-sans: "Exo 2", system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: "Share Tech Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --font-display: "Orbitron", "Exo 2", system-ui, sans-serif;
+
+  --color-white: #0e0e10;
+  --color-black: #050506;
+
+  --color-neutral-50: #0b0b0d;
+  --color-neutral-100: #17171b;
+  --color-neutral-200: #25252a;
+  --color-neutral-300: #3a3a42;
+  --color-neutral-400: #85858f;
+  --color-neutral-500: #9b9ba4;
+  --color-neutral-600: #b4b4bc;
+  --color-neutral-700: #cdcdd3;
+  --color-neutral-800: #dadadf;
+  --color-neutral-900: #f6f6f8;
+  --color-neutral-950: #ffffff;
+
+  --color-red-50: #2a0b0e;
+  --color-red-100: #3a1013;
+  --color-red-200: #561519;
+  --color-red-300: #6e1a20;
+  --color-red-400: #ff5a5a;
+  --color-red-500: #ff4040;
+  --color-red-600: #ff4b4b;
+  --color-red-700: #ff8f8f;
+  --color-red-800: #ffb0b0;
+  --color-red-900: #ffc9c9;
+
+  --color-amber-50: #241c07;
+  --color-amber-100: #2e2409;
+  --color-amber-200: #4f3d10;
+  --color-amber-300: #6b5314;
+  --color-amber-400: #f6b73c;
+  --color-amber-500: #f59e0b;
+  --color-amber-600: #f2a54e;
+  --color-amber-700: #f0c05a;
+  --color-amber-800: #f6d98a;
+  --color-amber-900: #ffe2a0;
+
+  --color-emerald-50: #0b2a1e;
+  --color-emerald-100: #0c3324;
+  --color-emerald-200: #135036;
+  --color-emerald-300: #17583f;
+  --color-emerald-500: #34d399;
+  --color-emerald-600: #4ade80;
+  --color-emerald-700: #7be3b2;
+  --color-emerald-800: #6ee7b7;
+  --color-emerald-900: #a7f3d0;
+
+  --color-green-50: #0b2a1e;
+  --color-green-100: #0c3324;
+  --color-green-200: #135036;
+  --color-green-300: #17583f;
+  --color-green-600: #4ade80;
+  --color-green-700: #7be3b2;
+  --color-green-800: #6ee7b7;
+  --color-green-900: #a7f3d0;
+
+  --color-blue-50: #0b1730;
+  --color-blue-100: #10203f;
+  --color-blue-200: #1e3a6b;
+  --color-blue-300: #2b4f8f;
+  --color-blue-600: #7aa7ff;
+  --color-blue-700: #9dbdff;
+  --color-blue-800: #b6ceff;
+  --color-blue-900: #c9dbff;
+}
+
 :root {
-  color-scheme: light;
+  color-scheme: dark;
+  --ajd-bg: #060607;
+  --ajd-ink: #f6f6f8;
+  --ajd-muted: #9b9ba4;
+  --ajd-line: #27272d;
+  --ajd-red: #e10f1f;
+  --ajd-red-hi: #ff4040;
+  --ajd-red-glow: rgba(255, 40, 52, 0.38);
+  --ajd-chrome: linear-gradient(180deg, #fafafc 0%, #cdd0d6 46%, #9a9da6 52%, #e6e8ec 100%);
+  --ajd-redmetal: linear-gradient(180deg, #ff5f5f 0%, #d7131f 50%, #9c0913 56%, #e5252f 100%);
+}
+
+html {
+  background: var(--ajd-bg);
 }
 
 body {
   @apply bg-neutral-50 text-neutral-900 antialiased;
+  background: var(--ajd-bg);
+  font-family: var(--font-sans);
+  overflow-x: hidden;
 }
 
-.badge {
-  @apply inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium;
-}
-.badge-bot {
-  @apply bg-emerald-100 text-emerald-800;
-}
-.badge-alerte {
-  @apply bg-red-100 text-red-700;
-}
-.badge-humain {
-  @apply bg-amber-100 text-amber-800;
-}
-.badge-neutre {
-  @apply bg-neutral-200 text-neutral-700;
+::placeholder {
+  color: #8a8a94;
+  opacity: 1;
 }
 
-.card {
-  @apply rounded-xl border border-neutral-200 bg-white p-4 shadow-sm;
+::selection {
+  background: rgba(225, 15, 31, 0.55);
+  color: #fff;
 }
 
-.btn {
-  @apply inline-flex items-center justify-center gap-1 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors disabled:opacity-50;
-}
-.btn-primary {
-  @apply bg-neutral-900 text-white hover:bg-neutral-700;
-}
-.btn-secondary {
-  @apply border border-neutral-300 bg-white text-neutral-800 hover:bg-neutral-100;
-}
-.btn-danger {
-  @apply bg-red-600 text-white hover:bg-red-500;
+@layer components {
+  .badge {
+    @apply inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium;
+    border: 1px solid transparent;
+  }
+  .badge-bot {
+    background: #0c3324;
+    color: #6ee7b7;
+    border-color: #17583f;
+  }
+  .badge-alerte {
+    background: #3a1013;
+    color: #ff8f8f;
+    border-color: #6e1a20;
+    box-shadow: 0 0 10px rgba(255, 40, 52, 0.18);
+  }
+  .badge-humain {
+    background: #241c07;
+    color: #f6d98a;
+    border-color: #6b5314;
+  }
+  .badge-neutre {
+    background: #1a1a1e;
+    color: #cdcdd3;
+    border-color: #3a3a42;
+  }
+
+  .card {
+    @apply relative rounded-xl p-4;
+    border: 1px solid var(--ajd-line);
+    background-color: #0e0e10;
+    background-image: linear-gradient(180deg, #131316 0%, #0e0e10 60%);
+    box-shadow: 0 10px 26px rgba(0, 0, 0, 0.5);
+  }
+  /* Liseré argent en haut de carte, comme sur la maquette. */
+  .card::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 16px;
+    right: 16px;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+    pointer-events: none;
+  }
+  /* Une carte « colorée » (bg-red-50, bg-amber-50…) garde sa teinte d'état. */
+  .card[class*="bg-"] {
+    background-image: none;
+  }
+
+  .btn {
+    @apply inline-flex items-center justify-center gap-1 rounded-lg px-3 py-1.5 text-sm font-semibold disabled:opacity-50;
+    border: 1px solid transparent;
+    transition:
+      transform 0.15s ease,
+      box-shadow 0.2s ease,
+      filter 0.2s ease,
+      background-color 0.2s ease,
+      border-color 0.2s ease;
+  }
+  .btn:active:not(:disabled) {
+    transform: translateY(1px) scale(0.985);
+  }
+  .btn-primary {
+    background: var(--ajd-chrome);
+    color: #0a0a0b;
+    font-weight: 700;
+    border-color: rgba(255, 255, 255, 0.55);
+    box-shadow:
+      0 6px 16px rgba(0, 0, 0, 0.55),
+      inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  }
+  .btn-primary:hover:not(:disabled) {
+    filter: brightness(1.08);
+    box-shadow:
+      0 8px 22px rgba(0, 0, 0, 0.6),
+      0 0 0 1px rgba(255, 255, 255, 0.25),
+      inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  }
+  .btn-secondary {
+    background: transparent;
+    border-color: #4a4a53;
+    color: #e9e9ec;
+    font-weight: 500;
+  }
+  .btn-secondary:hover:not(:disabled) {
+    background: #18181c;
+    border-color: #8d9097;
+  }
+  .btn-danger {
+    background: var(--ajd-redmetal);
+    color: #fff;
+    border-color: rgba(255, 120, 120, 0.5);
+    box-shadow:
+      0 6px 16px rgba(0, 0, 0, 0.5),
+      0 0 14px var(--ajd-red-glow),
+      inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  }
+  .btn-danger:hover:not(:disabled) {
+    filter: brightness(1.1);
+  }
+
+  .input {
+    @apply w-full rounded-lg px-3 py-1.5 text-sm;
+    background: #0a0a0c;
+    border: 1px solid #34343b;
+    color: #e9e9ec;
+    transition:
+      border-color 0.2s ease,
+      box-shadow 0.2s ease;
+  }
+  .input:focus {
+    outline: none;
+    border-color: #8d9097;
+    box-shadow:
+      0 0 0 3px rgba(225, 15, 31, 0.18),
+      0 0 16px rgba(225, 15, 31, 0.12);
+  }
+
+  .label {
+    @apply mb-1 block text-xs font-semibold uppercase;
+    letter-spacing: 0.08em;
+    color: var(--ajd-muted);
+  }
 }
 
-.input {
-  @apply w-full rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-sm focus:border-neutral-500 focus:outline-none;
+/* Champs préremplis par le navigateur : pas de pavé bleu/jaune clair. */
+.ajd-admin input:-webkit-autofill,
+.ajd-admin input:-webkit-autofill:hover,
+.ajd-admin input:-webkit-autofill:focus {
+  -webkit-text-fill-color: #e9e9ec;
+  -webkit-box-shadow: 0 0 0 1000px #0a0a0c inset;
+  caret-color: #e9e9ec;
+  transition: background-color 9999s ease 0s;
+}
+.ajd-admin .input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
-.label {
-  @apply mb-1 block text-xs font-semibold uppercase tracking-wide text-neutral-500;
+/* Champs natifs sans classe .input (select, case à cocher…). */
+.ajd-admin select,
+.ajd-admin input[type="checkbox"],
+.ajd-admin input[type="radio"] {
+  accent-color: var(--ajd-red);
+}
+.ajd-admin select:not(.input) {
+  background-color: #0a0a0c;
+}
+
+/* ───────────── Titres de page : Orbitron chromé souligné de rouge ───────────── */
+.ajd-main h1 {
+  font-family: var(--font-display);
+  letter-spacing: 0.03em;
+  background: var(--ajd-chrome);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  position: relative;
+  padding-bottom: 12px;
+}
+/* Les éléments colorés à l'intérieur d'un titre (badges, liens) gardent leur couleur. */
+.ajd-main h1 > * {
+  -webkit-text-fill-color: initial;
+  font-family: var(--font-sans);
+  letter-spacing: normal;
+}
+.ajd-main h1::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 64px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--ajd-redmetal);
+  box-shadow: 0 0 10px var(--ajd-red-glow);
+  animation: ajd-underline 0.9s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+/* En couche « base » : un utilitaire text-* posé sur un h2 (ex. titre rouge
+   de confirmation) garde la main. */
+@layer base {
+  .ajd-main h2 {
+    color: var(--ajd-ink);
+  }
+  .ajd-main table thead,
+  .ajd-main table th {
+    color: var(--ajd-muted);
+  }
+}
+
+/* ───────────── Ajustements de la palette inversée ─────────────
+   Quelques combinaisons des pages deviennent trop discrètes une fois la
+   palette passée en sombre : elles sont rattrapées ici, sans toucher aux
+   pages. Ces règles sont hors couche, elles passent devant les utilitaires. */
+
+/* Filets et séparateurs : neutral-100 (#17171b) disparaît sur une carte. */
+.ajd-main .border-neutral-100,
+.ajd-main .divide-neutral-100 > :not(:last-child) {
+  border-color: var(--ajd-line);
+}
+/* Pistes des barres de graphique. */
+.ajd-main .card .h-4.bg-neutral-100 {
+  background-color: #1d1d22;
+  box-shadow: inset 0 0 0 1px #2a2a30;
+}
+/* Encadrés internes (bg-neutral-50 / bg-white) posés dans une carte. */
+.ajd-main .card .bg-neutral-50,
+.ajd-main .card .bg-white {
+  background-color: #17171b;
+}
+.ajd-main .card .rounded-lg.bg-neutral-50,
+.ajd-main .card .rounded.bg-neutral-50 {
+  box-shadow: inset 0 0 0 1px var(--ajd-line);
+}
+/* Survol des lignes cliquables. */
+.ajd-main .hover\:bg-neutral-50:hover,
+.ajd-main .hover\:bg-neutral-100:hover {
+  background-color: #1c1c21;
+}
+.ajd-main a.grid.hover\:bg-neutral-50:hover {
+  box-shadow: inset 2px 0 0 var(--ajd-red-hi);
+}
+/* Boutons « sombres » d'origine (bg-neutral-900 text-white) : bouton chromé. */
+.ajd-main a.bg-neutral-900,
+.ajd-main button.bg-neutral-900 {
+  background: var(--ajd-chrome);
+  color: #0a0a0b;
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  box-shadow:
+    0 6px 16px rgba(0, 0, 0, 0.55),
+    inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  transition: filter 0.2s ease;
+}
+.ajd-main a.bg-neutral-900:hover,
+.ajd-main button.bg-neutral-900:hover {
+  filter: brightness(1.08);
+}
+/* Pastilles de relance : survol rouge plutôt qu'un aplat blanc. */
+.ajd-main button.hover\:bg-neutral-900:hover {
+  background-color: var(--color-red-50);
+  border-color: var(--color-red-400);
+  color: var(--color-red-800);
+}
+/* Bouton de suppression (border-red-200 text-red-600). */
+.ajd-main .btn.border-red-200:hover {
+  border-color: var(--color-red-400);
+  box-shadow: 0 0 12px rgba(255, 40, 52, 0.25);
+}
+
+/* Bouton « Choisir un fichier » natif, en argent comme les autres boutons. */
+.ajd-admin input[type="file"]::file-selector-button {
+  background: var(--ajd-chrome);
+  color: #0a0a0b;
+  font-weight: 600;
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  border-radius: 8px;
+  padding: 4px 12px;
+  margin-right: 10px;
+  cursor: pointer;
+}
+
+/* Chiffres clés (KPI) en police d'affichage. */
+.ajd-main .card .text-3xl {
+  font-family: var(--font-display);
+  letter-spacing: 0.01em;
+}
+.ajd-main .card .text-3xl.text-red-600 {
+  color: var(--ajd-red-hi);
+  text-shadow: 0 0 18px var(--ajd-red-glow);
+}
+
+/* Barres de graphiques : argent brossé sur piste sombre. */
+.ajd-main .bg-neutral-800.h-full {
+  background: linear-gradient(180deg, #f4f4f6 0%, #c3c6cc 50%, #8d9097 100%);
+  box-shadow: 0 0 10px rgba(255, 255, 255, 0.12);
+  transform-origin: left center;
+  animation: ajd-bar 1.1s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+/* ───────────── En-tête noir + menu horizontal ───────────── */
+.ajd-head {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  background: rgba(0, 0, 0, 0.92);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  box-shadow:
+    0 1px 0 rgba(225, 15, 31, 0.65),
+    0 8px 26px rgba(225, 15, 31, 0.14);
+}
+.ajd-brand-title {
+  font-family: var(--font-display);
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  line-height: 1.1;
+}
+.ajd-chrome-text {
+  background: var(--ajd-chrome);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.ajd-red-text {
+  background: var(--ajd-redmetal);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.ajd-nav {
+  scrollbar-width: none;
+}
+/* Sur mobile le menu défile : un fondu à droite indique qu'il continue. */
+@media (max-width: 1023px) {
+  .ajd-nav {
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 40px), transparent);
+    mask-image: linear-gradient(to right, #000 calc(100% - 40px), transparent);
+    padding-right: 32px;
+  }
+}
+.ajd-nav::-webkit-scrollbar {
+  display: none;
+}
+.ajd-nav-link {
+  position: relative;
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 10px 12px;
+  color: #dadadf;
+  font-size: 14.5px;
+  white-space: nowrap;
+  border-bottom: 2px solid transparent;
+  transition:
+    color 0.2s ease,
+    border-color 0.2s ease;
+}
+.ajd-nav-link:hover {
+  color: #fff;
+}
+.ajd-nav-link[aria-current="page"] {
+  color: #fff;
+  font-weight: 700;
+  border-bottom-color: var(--ajd-red-hi);
+  box-shadow: 0 8px 12px -8px var(--ajd-red-glow);
+}
+.ajd-nav-link.ajd-ext {
+  color: var(--ajd-muted);
+}
+/* Icône qui pivote en 3D au survol. */
+.ajd-nav-icon {
+  display: inline-block;
+  transition: transform 0.6s cubic-bezier(0.2, 0.8, 0.2, 1);
+  transform-style: preserve-3d;
+}
+.ajd-nav-link:hover .ajd-nav-icon {
+  transform: perspective(200px) rotateY(360deg);
+}
+.ajd-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  border-radius: 99px;
+  padding: 0 7px;
+  font-size: 12px;
+  font-weight: 700;
+}
+.ajd-pill-red {
+  background: var(--ajd-redmetal);
+  color: #fff;
+  box-shadow: 0 0 10px var(--ajd-red-glow);
+  animation: ajd-pulse 2.4s ease-in-out infinite;
+}
+.ajd-pill-amber {
+  background: #f59e0b;
+  color: #1a1200;
+}
+
+/* ───────────── Logo 3D ───────────── */
+.ajd-logo3d {
+  display: inline-block;
+  filter: drop-shadow(0 10px 18px rgba(0, 0, 0, 0.6)) drop-shadow(0 0 14px rgba(225, 15, 31, 0.2));
+}
+.ajd-logo3d-inner {
+  position: relative;
+  display: block;
+  animation: ajd-logo-float 7s ease-in-out infinite;
+  border-radius: 12px;
+  overflow: hidden;
+  /* Le reflet ne balaie que le dessin du logo (WebP transparent). */
+  -webkit-mask-image: var(--ajd-logo-mask);
+  mask-image: var(--ajd-logo-mask);
+  -webkit-mask-size: 100% 100%;
+  mask-size: 100% 100%;
+}
+.ajd-logo3d img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+/* Reflet métallique qui balaie le logo. */
+.ajd-logo3d-inner::after {
+  content: "";
+  position: absolute;
+  inset: -20%;
+  background: linear-gradient(
+    105deg,
+    transparent 40%,
+    rgba(255, 255, 255, 0.28) 48%,
+    rgba(255, 255, 255, 0.05) 52%,
+    transparent 60%
+  );
+  transform: translateX(-120%);
+  animation: ajd-sheen 5.5s ease-in-out infinite 1.2s;
+  mix-blend-mode: screen;
+  pointer-events: none;
+}
+.ajd-logo3d.ajd-logo-sm .ajd-logo3d-inner {
+  animation-duration: 9s;
+  border-radius: 8px;
+}
+
+/* ───────────── Décor 3D : halo rouge + sol en perspective ───────────── */
+.ajd-scene {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+  background: radial-gradient(ellipse at 50% -10%, rgba(225, 15, 31, 0.14), transparent 55%);
+}
+.ajd-scene-floor {
+  position: absolute;
+  left: -50%;
+  right: -50%;
+  bottom: -5%;
+  height: 55%;
+  transform: perspective(380px) rotateX(62deg);
+  transform-origin: 50% 100%;
+  background-image:
+    linear-gradient(rgba(255, 64, 64, 0.8) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 64, 64, 0.6) 1px, transparent 1px);
+  background-size: 64px 64px;
+  -webkit-mask-image: linear-gradient(to top, #000 10%, transparent 90%);
+  mask-image: linear-gradient(to top, #000 10%, transparent 90%);
+  opacity: 0.12;
+  animation: ajd-floor 5s linear infinite;
+}
+.ajd-scene-orb {
+  position: absolute;
+  width: 520px;
+  height: 520px;
+  border-radius: 50%;
+  filter: blur(80px);
+  opacity: 0.16;
+  background: radial-gradient(circle, rgba(225, 15, 31, 0.9), transparent 70%);
+  animation: ajd-orb 22s ease-in-out infinite;
+}
+.ajd-scene-orb.ajd-orb-2 {
+  right: -180px;
+  bottom: 10%;
+  width: 420px;
+  height: 420px;
+  opacity: 0.1;
+  background: radial-gradient(circle, rgba(220, 222, 230, 0.7), transparent 70%);
+  animation-duration: 28s;
+  animation-direction: reverse;
+}
+.ajd-scene.ajd-scene-login .ajd-scene-floor {
+  opacity: 0.4;
+}
+.ajd-scene.ajd-scene-login {
+  background: radial-gradient(ellipse at 50% 0%, rgba(225, 15, 31, 0.2), transparent 60%), #000;
+}
+
+/* Le contenu passe au-dessus du décor. */
+.ajd-layer {
+  position: relative;
+  z-index: 1;
+}
+
+/* ───────────── Entrée des pages et des cartes en 3D ───────────── */
+/* Fill « backwards » : l'animation ne fige pas la transformation une fois
+   terminée, l'inclinaison au survol reste libre. */
+.ajd-page {
+  animation: ajd-fade 0.45s ease backwards;
+}
+.ajd-main .card {
+  animation: ajd-rise 0.65s cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+  transition:
+    transform 0.45s cubic-bezier(0.2, 0.8, 0.2, 1),
+    box-shadow 0.35s ease,
+    border-color 0.35s ease;
+}
+.ajd-main .card:nth-child(2) { animation-delay: 0.06s; }
+.ajd-main .card:nth-child(3) { animation-delay: 0.12s; }
+.ajd-main .card:nth-child(4) { animation-delay: 0.18s; }
+.ajd-main .card:nth-child(n + 5) { animation-delay: 0.24s; }
+
+/* Inclinaison 3D au survol (pilotée par admin-fx.tsx via --ajd-rx / --ajd-ry).
+   La transformation n'existe que pendant le survol : au repos, la carte ne
+   crée pas de contexte d'empilement. */
+.ajd-main .card.ajd-tilting {
+  transform: perspective(1000px) rotateX(var(--ajd-rx, 0deg)) rotateY(var(--ajd-ry, 0deg)) translateZ(0);
+  transition:
+    transform 0.08s linear,
+    box-shadow 0.35s ease,
+    border-color 0.35s ease;
+  box-shadow:
+    0 18px 40px rgba(0, 0, 0, 0.6),
+    0 0 0 1px rgba(255, 255, 255, 0.04),
+    0 0 26px rgba(225, 15, 31, 0.08);
+}
+/* Une carte à bordure d'état (rouge, ambre…) la garde au survol. */
+.ajd-main .card.ajd-tilting:not([class*="border-"]) {
+  border-color: #3a3a42;
+}
+/* Cartes de saisie ou à défilement : reflet seulement, pas de rotation. */
+.ajd-main form.card.ajd-tilting,
+.ajd-main .card.ajd-tilting.overflow-y-auto,
+.ajd-main .card.ajd-tilting:has(form, input, textarea, select) {
+  transform: none;
+}
+/* Reflet qui suit le pointeur. */
+.ajd-main .card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.35s ease;
+  background: radial-gradient(
+    420px circle at var(--ajd-mx, 50%) var(--ajd-my, 0%),
+    rgba(255, 255, 255, 0.06),
+    transparent 45%
+  );
+}
+.ajd-main .card.ajd-tilting::after {
+  opacity: 1;
+}
+
+/* ───────────── Connexion ───────────── */
+.ajd-login-card {
+  animation: ajd-card-in 0.9s cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+  transform-style: preserve-3d;
+}
+.ajd-login-sub {
+  font-family: var(--font-display);
+  font-size: 11.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ajd-muted);
+}
+
+/* ───────────── Animations ───────────── */
+@keyframes ajd-fade {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes ajd-rise {
+  from {
+    opacity: 0;
+    transform: translateY(18px) rotateX(10deg);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes ajd-card-in {
+  from {
+    opacity: 0;
+    transform: perspective(900px) translateY(30px) rotateX(18deg) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes ajd-logo-float {
+  0%,
+  100% {
+    transform: perspective(700px) rotateY(-10deg) rotateX(4deg) translateZ(0);
+  }
+  50% {
+    transform: perspective(700px) rotateY(10deg) rotateX(-3deg) translateZ(10px);
+  }
+}
+@keyframes ajd-sheen {
+  0%,
+  55% {
+    transform: translateX(-120%);
+  }
+  85%,
+  100% {
+    transform: translateX(120%);
+  }
+}
+@keyframes ajd-floor {
+  from {
+    background-position: 0 0;
+  }
+  to {
+    background-position: 0 64px;
+  }
+}
+@keyframes ajd-orb {
+  0%,
+  100% {
+    transform: translate(-120px, -80px);
+  }
+  50% {
+    transform: translate(40vw, 30vh);
+  }
+}
+@keyframes ajd-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 8px var(--ajd-red-glow);
+  }
+  50% {
+    box-shadow: 0 0 16px rgba(255, 40, 52, 0.7);
+  }
+}
+@keyframes ajd-underline {
+  from {
+    width: 0;
+  }
+  to {
+    width: 64px;
+  }
+}
+@keyframes ajd-bar {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+/* Mouvement réduit : tout reste statique. */
+@media (prefers-reduced-motion: reduce) {
+  .ajd-admin *,
+  .ajd-admin *::before,
+  .ajd-admin *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+  .ajd-main .card {
+    transform: none !important;
+  }
 }

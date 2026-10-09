@@ -2,16 +2,22 @@
 
 import { useActionState } from "react";
 import { loginAction } from "@/lib/actions";
+import { Logo3D } from "../logo-3d";
 
 export default function LoginPage() {
   const [state, formAction, pending] = useActionState(loginAction, null);
 
   return (
-    <main className="flex min-h-screen items-center justify-center p-4">
-      <form action={formAction} className="card w-full max-w-sm space-y-4">
-        <div>
-          <h1 className="text-xl font-bold">ARBI JACOB</h1>
-          <p className="text-sm text-neutral-500">Back-office de l&apos;agent WhatsApp</p>
+    <main className="relative flex min-h-screen items-center justify-center overflow-hidden p-4">
+      <div className="ajd-scene ajd-scene-login" aria-hidden="true">
+        <div className="ajd-scene-orb" />
+        <div className="ajd-scene-floor" />
+      </div>
+      <form action={formAction} className="card ajd-login-card ajd-layer w-full max-w-sm space-y-4 p-6">
+        <div className="flex flex-col items-center gap-3 text-center">
+          <Logo3D size={220} />
+          <h1 className="sr-only">ARBI JACOB</h1>
+          <p className="ajd-login-sub">Back-office de l&apos;agent WhatsApp</p>
         </div>
         <div>
           <label className="label" htmlFor="username">
@@ -33,7 +39,7 @@ export default function LoginPage() {
           />
         </div>
         {state?.error && <p className="text-sm font-medium text-red-600">{state.error}</p>}
-        <button type="submit" className="btn btn-primary w-full" disabled={pending}>
+        <button type="submit" className="btn btn-primary w-full py-2.5 text-base" disabled={pending}>
           {pending ? "Connexion…" : "Se connecter"}
         </button>
       </form>
